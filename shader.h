@@ -3,8 +3,9 @@
 
 typedef enum
 {
-    SHADER_DEINT_LINEAR = 0,
-    SHADER_COPY
+    SHADER_YUVI420_RGB = 0,
+    SHADER_COPY,
+    SHADER_BRSWAP_COPY
 } GLESShaderTypes;
 
 typedef struct 

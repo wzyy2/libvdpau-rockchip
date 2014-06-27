@@ -36,6 +36,17 @@ static int dirty_in_rect(const VdpRect *dirty, const VdpRect *rect)
 	       (dirty->x1 <= rect->x1) && (dirty->y1 <= rect->y1);
 }
 
+static VdpRect rgba_clip(rgba_surface_t *rgba, const VdpRect *rect) {
+	VdpRect d_rect = {0, 0, rgba->width, rgba->height};
+	if (rect) {
+		d_rect.x0 = max(rect->x0, 0);
+		d_rect.y0 = max(rect->y0, 0);
+		d_rect.x1 = min(rect->x1, rgba->width);
+		d_rect.y1 = min(rect->y1, rgba->height);
+	}
+	return d_rect;
+}
+
 VdpStatus rgba_create(rgba_surface_t *rgba,
                       device_ctx_t *device,
                       uint32_t width,
@@ -76,9 +87,7 @@ VdpStatus rgba_put_bits_native(rgba_surface_t *rgba,
                                uint32_t const *source_pitches,
                                VdpRect const *destination_rect)
 {
-	VdpRect d_rect = {0, 0, rgba->width, rgba->height};
-	if (destination_rect)
-		d_rect = *destination_rect;
+	VdpRect d_rect = rgba_clip(rgba, destination_rect);
 
 	if ((rgba->flags & RGBA_FLAG_NEEDS_CLEAR) && !dirty_in_rect(&rgba->dirty, &d_rect))
 		rgba_clear(rgba);
@@ -122,9 +131,7 @@ VdpStatus rgba_put_bits_indexed(rgba_surface_t *rgba,
 	const uint8_t *src_ptr = source_data[0];
 	uint32_t *dst_ptr = rgba->data;
 
-	VdpRect d_rect = {0, 0, rgba->width, rgba->height};
-	if (destination_rect)
-		d_rect = *destination_rect;
+	VdpRect d_rect = rgba_clip(rgba, destination_rect);
 
 	if ((rgba->flags & RGBA_FLAG_NEEDS_CLEAR) && !dirty_in_rect(&rgba->dirty, &d_rect))
 		rgba_clear(rgba);
@@ -150,6 +157,7 @@ VdpStatus rgba_put_bits_indexed(rgba_surface_t *rgba,
 			default:
 				return VDP_STATUS_INVALID_INDEXED_FORMAT;
 			}
+			// TODO if rgba->format == VDP_RGBA_FORMAT_R8G8B8A8 then swap!
 			dst_ptr[x] = (colormap[i] & 0x00ffffff) | (a << 24);
 		}
 		src_ptr += source_pitch[0];
@@ -181,9 +189,9 @@ VdpStatus rgba_render_surface(rgba_surface_t *dest,
 	s_rect.y1 = src ? src->height : 1;
 
 	if (source_rect)
-		s_rect = *source_rect;
+		s_rect = rgba_clip(src, source_rect);
 	if (destination_rect)
-		d_rect = *destination_rect;
+		d_rect = rgba_clip(dest, destination_rect);
 
 	// ignore zero-sized surfaces (also workaround for g2d driver bug)
 	if (s_rect.x0 == s_rect.x1 || s_rect.y0 == s_rect.y1 ||
@@ -224,8 +232,8 @@ void rgba_fill(rgba_surface_t *dest, const VdpRect *dest_rect, uint32_t color)
 	if (dest_rect) {
 		x = dest_rect->x0;
 		y = dest_rect->y0;
-		w = dest_rect->x1 - dest_rect->x0;
-		h = dest_rect->y1 - dest_rect->y0;
+		w = min(dest_rect->x1 - dest_rect->x0, dest->width);
+		h = min(dest_rect->y1 - dest_rect->y0, dest->height);
 	} else {
 		x = 0;
 		y = 0;
@@ -259,6 +267,10 @@ void rgba_blit(rgba_surface_t *dest, const VdpRect *dest_rect, rgba_surface_t *s
 	int width = src_rect->x1 - src_rect->x0;
 	int height = src_rect->y1 - src_rect->y0;
 
+	/* Clip to dest area */
+	height = height + dest_rect->y0 > dest->height ? dest->height - dest_rect->y0 : height;
+	width = width + dest_rect->x0 > dest->width ? dest->width - dest_rect->x0 : width;
+	
 	uint32_t *srcp = (uint32_t *) src->data + src_rect->x0 + src_rect->y0 * src->width;
 	int srcskip = src->width - width;
 
@@ -274,7 +286,7 @@ void rgba_blit(rgba_surface_t *dest, const VdpRect *dest_rect, rgba_surface_t *s
 		return;
 	}
 	
-	while (height--) {
+	while (--height) {
 		DUFFS_LOOP4({
 			uint32_t dalpha;
 			uint32_t d;
@@ -309,23 +321,4 @@ void rgba_blit(rgba_surface_t *dest, const VdpRect *dest_rect, rgba_surface_t *s
 		dstp += dstskip;
 	}
 }
-/*
-void rgba_blit(rgba_surface_t *dest, const VdpRect *dest_rect, rgba_surface_t *src, const VdpRect *src_rect)
-{
-	int dx, dy, sx, sy, w, h, i;
-	dx = dest_rect->x0;
-	dy = dest_rect->y0;
-	sx = src_rect->x0;
-	sy = src_rect->y0;
-	w = src_rect->x1 - src_rect->x0;
-	h = src_rect->y1 - src_rect->y0;
 
-	void *dd = dest->data + (dy*dest->width + dx)*4;
-	void *sd = src->data + (sy*src->width + sx)*4;
-	for(i=0 ; i<h ; i++) {
-		memcpy(dd, sd, w*4);
-		dd += dest->width * 4;
-		sd += src->width * 4;
-	}
-}
-*/

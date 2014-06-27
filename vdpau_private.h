@@ -42,13 +42,16 @@ typedef struct
 	EGLContext context;
 	EGLSurface surface;
 	
-	GLESShader deinterlace;
+	GLESShader yuvi420_rgb;
 	GLint y_tex_loc;
 	GLint u_tex_loc;
 	GLint v_tex_loc;
 	
-	GLESShader scale;
+	GLESShader copy;
 	GLint rgb_tex_loc;
+
+	GLESShader brswap;
+	GLint bgr_tex_loc;
 } device_egl_t;
 
 typedef struct

@@ -123,26 +123,34 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
         return VDP_STATUS_RESOURCES;
     }
 
-   	int ret = gl_init_shader (&dev->egl.deinterlace, SHADER_DEINT_LINEAR);
+   	int ret = gl_init_shader (&dev->egl.yuvi420_rgb, SHADER_YUVI420_RGB);
     if (ret < 0) {
         VDPAU_DBG ("Could not initialize shader: %d", ret);
         free(dev);
         return VDP_STATUS_RESOURCES;
     }
-    dev->egl.y_tex_loc = glGetUniformLocation(dev->egl.deinterlace.program, "s_ytex");
+    dev->egl.y_tex_loc = glGetUniformLocation(dev->egl.yuvi420_rgb.program, "s_ytex");
     CHECKEGL
-    dev->egl.u_tex_loc = glGetUniformLocation(dev->egl.deinterlace.program, "s_utex");
+    dev->egl.u_tex_loc = glGetUniformLocation(dev->egl.yuvi420_rgb.program, "s_utex");
     CHECKEGL
-    dev->egl.v_tex_loc = glGetUniformLocation(dev->egl.deinterlace.program, "s_vtex");
+    dev->egl.v_tex_loc = glGetUniformLocation(dev->egl.yuvi420_rgb.program, "s_vtex");
     CHECKEGL
 
-    ret = gl_init_shader (&dev->egl.scale, SHADER_COPY);
+    ret = gl_init_shader (&dev->egl.copy, SHADER_COPY);
     if (ret < 0) {
         VDPAU_DBG ("Could not initialize shader: %d", ret);
         free(dev);
         return VDP_STATUS_RESOURCES;
     }
-    dev->egl.rgb_tex_loc = glGetUniformLocation(dev->egl.scale.program, "s_tex");
+    dev->egl.rgb_tex_loc = glGetUniformLocation(dev->egl.copy.program, "s_tex");
+
+    ret = gl_init_shader (&dev->egl.brswap, SHADER_BRSWAP_COPY);
+    if (ret < 0) {
+        VDPAU_DBG ("Could not initialize shader: %d", ret);
+        free(dev);
+        return VDP_STATUS_RESOURCES;
+    }
+    dev->egl.bgr_tex_loc = glGetUniformLocation(dev->egl.brswap.program, "s_tex");
 
     if (!eglMakeCurrent(dev->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
         VDPAU_DBG ("Could not set EGL context to none %x", eglGetError());
@@ -161,8 +169,9 @@ VdpStatus vdp_device_destroy(VdpDevice device)
 	if (!dev)
 		return VDP_STATUS_INVALID_HANDLE;
 
-	gl_delete_shader(&dev->egl.deinterlace);
-	gl_delete_shader(&dev->egl.scale);
+	gl_delete_shader(&dev->egl.yuvi420_rgb);
+	gl_delete_shader(&dev->egl.copy);
+	gl_delete_shader(&dev->egl.brswap);
 
 	eglDestroyContext(dev->egl.display, dev->egl.context);
 	eglDestroySurface(dev->egl.display, dev->egl.surface);

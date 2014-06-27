@@ -6,8 +6,16 @@
 
 #include "vdpau_private.h"
 
-static const char* shaders[] = {
-    /* YUV I420 -> RGB */
+const char *vertex_shader =	"attribute vec4 vPosition;"
+	"attribute vec2 aTexcoord;"
+	"varying vec2 vTexcoord;"
+	"void main(void) {"
+	"   gl_Position = vPosition;"
+	"   vTexcoord = aTexcoord;"
+	"}";
+
+static const char* fragment_shaders[] = {
+    /* YUVI420_RGB */
 	"precision mediump float;"
 	"varying vec2 vTexcoord;"
 	"uniform sampler2D s_ytex,s_utex,s_vtex;"
@@ -34,17 +42,17 @@ static const char* shaders[] = {
 	"uniform sampler2D s_tex;"
 	"void main(void) {"
 	"	gl_FragColor = texture2D(s_tex, vTexcoord);"
+	"}",
+	
+	/* BRSWAP_COPY */
+    "precision mediump float;"
+	"varying vec2 vTexcoord;"
+	"uniform sampler2D s_tex;"
+	"void main(void) {"
+	"	gl_FragColor = texture2D(s_tex, vTexcoord).bgra;"
 	"}"
-};
 
-#define VERTEX_SHADER \
-	"attribute vec4 vPosition;"\
-	"attribute vec2 aTexcoord;"\
-	"varying vec2 vTexcoord;"\
-	"void main(void) {"\
-	"   gl_Position = vPosition;"\
-	"   vTexcoord = aTexcoord;"\
-	"}"
+};
 
 /* load and compile a shader src into a shader program */
 static GLuint
@@ -102,12 +110,12 @@ static int
 gl_load_shaders (GLESShader *shader,
                  GLESShaderTypes process_type)
 {
-    shader->vertex_shader = gl_load_shader (VERTEX_SHADER,
+    shader->vertex_shader = gl_load_shader (vertex_shader,
                                           GL_VERTEX_SHADER);
     if (!shader->vertex_shader)
         return -EINVAL;
 
-    shader->fragment_shader = gl_load_shader (shaders[process_type],
+    shader->fragment_shader = gl_load_shader (fragment_shaders[process_type],
                                             GL_FRAGMENT_SHADER);
     if (!shader->fragment_shader)
         return -EINVAL;

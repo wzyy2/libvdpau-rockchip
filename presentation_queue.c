@@ -239,8 +239,6 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 	}
 	CHECKEGL
 	
-	glUseProgram (q->device->egl.scale.program);
-	CHECKEGL
 	glBindFramebuffer (GL_FRAMEBUFFER, 0);
 	CHECKEGL
 
@@ -276,16 +274,19 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 				os->video_dst_rect.y1-os->video_dst_rect.y0);
 		CHECKEGL
 
-		glVertexAttribPointer (q->device->egl.scale.position_loc, 2, GL_FLOAT,
-			GL_FALSE, 4 * sizeof (GLfloat), vVertices);
-		CHECKEGL
-		glEnableVertexAttribArray (q->device->egl.scale.position_loc);
+		glUseProgram (q->device->egl.copy.program);
 		CHECKEGL
 
-		glVertexAttribPointer (q->device->egl.scale.texcoord_loc, 2, GL_FLOAT,
+		glVertexAttribPointer (q->device->egl.copy.position_loc, 2, GL_FLOAT,
+			GL_FALSE, 4 * sizeof (GLfloat), vVertices);
+		CHECKEGL
+		glEnableVertexAttribArray (q->device->egl.copy.position_loc);
+		CHECKEGL
+
+		glVertexAttribPointer (q->device->egl.copy.texcoord_loc, 2, GL_FLOAT,
 			GL_FALSE, 4 * sizeof (GLfloat), &vVertices[2]);
 		CHECKEGL
-		glEnableVertexAttribArray (q->device->egl.scale.texcoord_loc);
+		glEnableVertexAttribArray (q->device->egl.copy.texcoord_loc);
 		CHECKEGL
 
 		glActiveTexture(GL_TEXTURE3);
@@ -296,6 +297,9 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 		CHECKEGL
 
 		glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
+		CHECKEGL
+		
+		glUseProgram(0);
 		CHECKEGL
 	}
 
@@ -320,37 +324,32 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 		};
 		GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
 
-		int br_swap = os->rgba.format == VDP_RGBA_FORMAT_R8G8B8A8 ? 1 : 0; 
+		GLESShader *shader;
+		GLuint texture_loc;
+		if(os->rgba.format == VDP_RGBA_FORMAT_B8G8R8A8) {
+			shader = &q->device->egl.brswap;
+			texture_loc = q->device->egl.bgr_tex_loc;
+		} else {
+			shader = &q->device->egl.copy;
+			texture_loc = q->device->egl.rgb_tex_loc;
+		}
 
-		VDPAU_DBG("RGBA = %d %d", os->rgba.width, os->rgba.height);
+		glUseProgram (shader->program);
+		CHECKEGL
 
-		int sx, sy, sw, sh;
-		sx = os->rgba.dirty.x0;
-		sy = os->rgba.dirty.y0;
-		sw = os->rgba.dirty.x1 - os->rgba.dirty.x0;
-		sh = os->rgba.dirty.y1 - os->rgba.dirty.y0;
-		VDPAU_DBG("SRC = %d %d %d %d", sx, sy, sw, sh);
-
-		int dx, dy, dw, dh;
-		dx = os->rgba.dirty.x0;
-		dy = os->rgba.dirty.y0;
-		dw = min_nz(clip_width, os->rgba.dirty.x1) - os->rgba.dirty.x0;
-		dh = min_nz(clip_height, os->rgba.dirty.y1) - os->rgba.dirty.y0;
-		VDPAU_DBG("DST = %d %d %d %d", dx, dy, dw, dh);
-		
 		glViewport(0, 0, os->rgba.width, os->rgba.height);
 		CHECKEGL
 
-		glVertexAttribPointer (q->device->egl.scale.position_loc, 2, GL_FLOAT,
+		glVertexAttribPointer (shader->position_loc, 2, GL_FLOAT,
 			GL_FALSE, 4 * sizeof (GLfloat), vVertices);
 		CHECKEGL
-		glEnableVertexAttribArray (q->device->egl.scale.position_loc);
+		glEnableVertexAttribArray (shader->position_loc);
 		CHECKEGL
 
-		glVertexAttribPointer (q->device->egl.scale.texcoord_loc, 2, GL_FLOAT,
+		glVertexAttribPointer (shader->texcoord_loc, 2, GL_FLOAT,
 			GL_FALSE, 4 * sizeof (GLfloat), &vVertices[2]);
 		CHECKEGL
-		glEnableVertexAttribArray (q->device->egl.scale.texcoord_loc);
+		glEnableVertexAttribArray (shader->texcoord_loc);
 		CHECKEGL
 
 		CHECKEGL
@@ -361,7 +360,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, os->rgba.width, os->rgba.height, 0, GL_RGBA,
 				  GL_UNSIGNED_BYTE, os->rgba.data);
 		CHECKEGL
-		glUniform1i (q->device->egl.rgb_tex_loc, 0);
+		glUniform1i (texture_loc, 0);
 		CHECKEGL
 		
 		glEnable(GL_BLEND);
@@ -371,14 +370,14 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 
 		glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
 		CHECKEGL
+
+		glUseProgram(0);
+		CHECKEGL
+
+		glDisable(GL_BLEND);
+		CHECKEGL
 	}
 	
-	glDisable(GL_BLEND);
-	CHECKEGL
-
-	glUseProgram(0);
-	CHECKEGL
-		
 	eglSwapBuffers (q->device->egl.display, q->target->surface);
 	CHECKEGL
 

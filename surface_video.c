@@ -253,7 +253,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 			VDPAU_DBG("failed to make complete framebuffer object %x", status);
 		}
 
-		glUseProgram (vs->device->egl.deinterlace.program);
+		glUseProgram (vs->device->egl.yuvi420_rgb.program);
 		CHECKEGL
 
 		glViewport(0, 0, vs->width, vs->height);
@@ -262,18 +262,18 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 		glClear (GL_COLOR_BUFFER_BIT);
 		CHECKEGL
 
-		glVertexAttribPointer (vs->device->egl.deinterlace.position_loc, 2,
+		glVertexAttribPointer (vs->device->egl.yuvi420_rgb.position_loc, 2,
 							   GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
 							   vVertices);
 		CHECKEGL
-		glEnableVertexAttribArray (vs->device->egl.deinterlace.position_loc);
+		glEnableVertexAttribArray (vs->device->egl.yuvi420_rgb.position_loc);
 		CHECKEGL
 
-		glVertexAttribPointer (vs->device->egl.deinterlace.texcoord_loc, 2,
+		glVertexAttribPointer (vs->device->egl.yuvi420_rgb.texcoord_loc, 2,
 							   GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
 							   &vVertices[2]);
 		CHECKEGL
-		glEnableVertexAttribArray (vs->device->egl.deinterlace.texcoord_loc);
+		glEnableVertexAttribArray (vs->device->egl.yuvi420_rgb.texcoord_loc);
 		CHECKEGL
 
 	    /* y component */
