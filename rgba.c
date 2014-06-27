@@ -259,11 +259,11 @@ void rgba_blit(rgba_surface_t *dest, const VdpRect *dest_rect, rgba_surface_t *s
 	int width = src_rect->x1 - src_rect->x0;
 	int height = src_rect->y1 - src_rect->y0;
 
-	uint32_t *srcp = (uint32_t *) (src->data + src_rect->x0 + src_rect->y0 * src->width);
-	int srcskip = src->width >> 2;
+	uint32_t *srcp = (uint32_t *) src->data + src_rect->x0 + src_rect->y0 * src->width;
+	int srcskip = src->width - width;
 
-	uint32_t *dstp = (uint32_t *) (dest->data + dest_rect->x0 + dest_rect->y0 * dest->width);
-	int dstskip = dest->width >> 2;
+	uint32_t *dstp = (uint32_t *) dest->data + dest_rect->x0 + dest_rect->y0 * dest->width;
+	int dstskip = dest->width - width;
 
 	while (height--) {
 		DUFFS_LOOP4({
