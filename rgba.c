@@ -242,6 +242,65 @@ void rgba_fill(rgba_surface_t *dest, const VdpRect *dest_rect, uint32_t color)
 	}
 }
 
+
+#define DUFFS_LOOP4(pixel_copy_increment, width)                        \
+{ int n = (width+3)/4;                                                  \
+	switch (width & 3) {                                                \
+	case 0: do {    pixel_copy_increment;                               \
+	case 3:     pixel_copy_increment;                                   \
+	case 2:     pixel_copy_increment;                                   \
+	case 1:     pixel_copy_increment;                                   \
+		} while (--n > 0);                                              \
+	}                                                                   \
+}
+
+/* fast ARGB888->(A)RGB888 blending with pixel alpha */
+void rgba_blit(rgba_surface_t *dest, const VdpRect *dest_rect, rgba_surface_t *src, const VdpRect *src_rect) {
+	int width = src_rect->x1 - src_rect->x0;
+	int height = src_rect->y1 - src_rect->y0;
+
+	uint32_t *srcp = (uint32_t *) (src->data + src_rect->x0 + src_rect->y0 * src->width);
+	int srcskip = src->width >> 2;
+
+	uint32_t *dstp = (uint32_t *) (dest->data + dest_rect->x0 + dest_rect->y0 * dest->width);
+	int dstskip = dest->width >> 2;
+
+	while (height--) {
+		DUFFS_LOOP4({
+			uint32_t dalpha;
+			uint32_t d;
+			uint32_t s1;
+			uint32_t d1;
+			uint32_t s = *srcp;
+			uint32_t alpha = s >> 24;
+			if (alpha) {
+			  if (alpha == 0xFF) {
+				*dstp = *srcp;
+			  } else {
+				/*
+				 * take out the middle component (green), and process
+				 * the other two in parallel. One multiply less.
+				 */
+				d = *dstp;
+				dalpha = d >> 24;
+				s1 = s & 0xff00ff;
+				d1 = d & 0xff00ff;
+				d1 = (d1 + ((s1 - d1) * alpha >> 8)) & 0xff00ff;
+				s &= 0xff00;
+				d &= 0xff00;
+				d = (d + ((s - d) * alpha >> 8)) & 0xff00;
+				dalpha = alpha + (dalpha * (alpha ^ 0xFF) >> 8);
+				*dstp = d1 | d | (dalpha << 24);
+			  }
+			}
+			++srcp;
+			++dstp;
+		}, width);
+		srcp += srcskip;
+		dstp += dstskip;
+	}
+}
+/*
 void rgba_blit(rgba_surface_t *dest, const VdpRect *dest_rect, rgba_surface_t *src, const VdpRect *src_rect)
 {
 	int dx, dy, sx, sy, w, h, i;
@@ -260,3 +319,4 @@ void rgba_blit(rgba_surface_t *dest, const VdpRect *dest_rect, rgba_surface_t *s
 		sd += src->width * 4;
 	}
 }
+*/
