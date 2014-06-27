@@ -265,6 +265,15 @@ void rgba_blit(rgba_surface_t *dest, const VdpRect *dest_rect, rgba_surface_t *s
 	uint32_t *dstp = (uint32_t *) dest->data + dest_rect->x0 + dest_rect->y0 * dest->width;
 	int dstskip = dest->width - width;
 
+	if (dest->flags & RGBA_FLAG_NEEDS_CLEAR) {
+		while(height--) {
+			memcpy(dstp, srcp, width*4);
+			dstp += dest->width;
+			srcp += src->width;
+		}
+		return;
+	}
+	
 	while (height--) {
 		DUFFS_LOOP4({
 			uint32_t dalpha;
