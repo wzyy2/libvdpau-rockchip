@@ -36,6 +36,8 @@
 typedef enum
 {
     SHADER_YUVI420_RGB = 0,
+    SHADER_YUYV422_RGB,
+    SHADER_UYVY422_RGB,
     SHADER_YUVNV12_RGB,
     SHADER_COPY,
     SHADER_BRSWAP_COPY
@@ -51,7 +53,10 @@ typedef struct
     GLint position_loc;
     GLint texcoord_loc;
     
-    GLuint texture[3];
+    /* Used in YUYV & UYUV shaders */
+    GLint stepX;
+    
+    GLint texture[3];
 } shader_ctx_t;
 
 typedef struct
@@ -62,6 +67,8 @@ typedef struct
 	EGLSurface surface;
 	
 	shader_ctx_t yuvi420_rgb;
+	shader_ctx_t yuyv422_rgb;
+	shader_ctx_t uyvy422_rgb;
 	shader_ctx_t yuvnv12_rgb;
 	shader_ctx_t copy;
 	shader_ctx_t brswap;
