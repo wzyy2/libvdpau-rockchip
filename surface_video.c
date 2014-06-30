@@ -157,6 +157,78 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(VdpVideoSurface surface,
     return VDP_STATUS_ERROR;
 }
 
+static GLfloat vVertices[] =
+{
+    -1.0f, -1.0f,
+    0.0f, 1.0f,
+
+    1.0f, -1.0f,
+    1.0f, 1.0f,
+
+    1.0f, 1.0f,
+    1.0f, 0.0f,
+
+    -1.0f, 1.0f,
+    0.0f, 0.0f,
+};
+static GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
+
+static void shader_init(video_surface_ctx_t *vs, shader_ctx_t *shader)
+{
+    device_ctx_t *dev = vs->device;
+
+    if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
+                        dev->egl.surface, dev->egl.context)) {
+        VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());
+        return;
+    }
+
+    glBindFramebuffer (GL_FRAMEBUFFER, vs->framebuffer);
+    CHECKEGL
+
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER) ;
+    if(status != GL_FRAMEBUFFER_COMPLETE) {
+        VDPAU_DBG("failed to make complete framebuffer object %x", status);
+    }
+
+    glUseProgram (shader->program);
+    CHECKEGL
+
+    glViewport(0, 0, vs->width, vs->height);
+    CHECKEGL
+
+    glClear (GL_COLOR_BUFFER_BIT);
+    CHECKEGL
+
+    glVertexAttribPointer (shader->position_loc, 2,
+                           GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
+                           vVertices);
+    CHECKEGL
+    glEnableVertexAttribArray (shader->position_loc);
+    CHECKEGL
+
+    glVertexAttribPointer (shader->texcoord_loc, 2,
+                           GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
+                           &vVertices[2]);
+    CHECKEGL
+    glEnableVertexAttribArray (shader->texcoord_loc);
+    CHECKEGL
+}
+
+static void shader_draw(video_surface_ctx_t *vs)
+{
+    glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
+    CHECKEGL
+
+    glUseProgram(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    if (!eglMakeCurrent(vs->device->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+        VDPAU_DBG ("Could not set EGL context to none %x", eglGetError());
+        return;
+    }
+}
+
 VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
                                              VdpYCbCrFormat source_ycbcr_format,
                                              void const *const *source_data,
@@ -168,24 +240,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 
     vs->source_format = source_ycbcr_format;
 
-    GLfloat vVertices[] =
-    {
-        -1.0f, -1.0f,
-        0.0f, 1.0f,
-
-        1.0f, -1.0f,
-        1.0f, 1.0f,
-
-        1.0f, 1.0f,
-        1.0f, 0.0f,
-
-        -1.0f, 1.0f,
-        0.0f, 0.0f,
-    };
-    GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
-    device_ctx_t *dev = vs->device;
     shader_ctx_t *shader;
-    GLenum status;
 
     switch (source_ycbcr_format)
     {
@@ -204,42 +259,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         else
             shader = &vs->device->egl.uyvy422_rgb;
 
-        if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
-                            dev->egl.surface, dev->egl.context)) {
-            VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());
-            return VDP_STATUS_RESOURCES;
-        }
-
-        glBindFramebuffer (GL_FRAMEBUFFER, vs->framebuffer);
-        CHECKEGL
-
-        status = glCheckFramebufferStatus(GL_FRAMEBUFFER) ;
-        if(status != GL_FRAMEBUFFER_COMPLETE) {
-            VDPAU_DBG("failed to make complete framebuffer object %x", status);
-        }
-
-        glUseProgram (shader->program);
-        CHECKEGL
-
-        glViewport(0, 0, vs->width, vs->height);
-        CHECKEGL
-
-        glClear (GL_COLOR_BUFFER_BIT);
-        CHECKEGL
-
-        glVertexAttribPointer (shader->position_loc, 2,
-                               GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
-                               vVertices);
-        CHECKEGL
-        glEnableVertexAttribArray (shader->position_loc);
-        CHECKEGL
-
-        glVertexAttribPointer (shader->texcoord_loc, 2,
-                               GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
-                               &vVertices[2]);
-        CHECKEGL
-        glEnableVertexAttribArray (shader->texcoord_loc);
-        CHECKEGL
+        shader_init(vs, shader);
 
         /* y component */
         glActiveTexture(GL_TEXTURE0);
@@ -256,16 +276,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         glUniform1f (shader->stepX, 1.0f / vs->width);
         CHECKEGL
 
-        glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
-        CHECKEGL
-
-        glUseProgram(0);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        if (!eglMakeCurrent(dev->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-            VDPAU_DBG ("Could not set EGL context to none %x", eglGetError());
-            return VDP_STATUS_RESOURCES;
-        }
+        shader_draw(vs);
         break;
 
     case VDP_YCBCR_FORMAT_Y8U8V8A8:
@@ -283,43 +294,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         }
 
         shader = &vs->device->egl.yuvnv12_rgb;
-
-        if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
-                            dev->egl.surface, dev->egl.context)) {
-            VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());
-            return VDP_STATUS_RESOURCES;
-        }
-
-        glBindFramebuffer (GL_FRAMEBUFFER, vs->framebuffer);
-        CHECKEGL
-
-        status = glCheckFramebufferStatus(GL_FRAMEBUFFER) ;
-        if(status != GL_FRAMEBUFFER_COMPLETE) {
-            VDPAU_DBG("failed to make complete framebuffer object %x", status);
-        }
-
-        glUseProgram (shader->program);
-        CHECKEGL
-
-        glViewport(0, 0, vs->width, vs->height);
-        CHECKEGL
-
-        glClear (GL_COLOR_BUFFER_BIT);
-        CHECKEGL
-
-        glVertexAttribPointer (shader->position_loc, 2,
-                               GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
-                               vVertices);
-        CHECKEGL
-        glEnableVertexAttribArray (shader->position_loc);
-        CHECKEGL
-
-        glVertexAttribPointer (shader->texcoord_loc, 2,
-                               GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
-                               &vVertices[2]);
-        CHECKEGL
-        glEnableVertexAttribArray (shader->texcoord_loc);
-        CHECKEGL
+        shader_init(vs, shader);
 
         /* y component */
         glActiveTexture(GL_TEXTURE0);
@@ -345,16 +320,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         glUniform1i (shader->texture[1], 1);
         CHECKEGL
 
-        glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
-        CHECKEGL
-
-        glUseProgram(0);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        if (!eglMakeCurrent(dev->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-            VDPAU_DBG ("Could not set EGL context to none %x", eglGetError());
-            return VDP_STATUS_RESOURCES;
-        }
+        shader_draw(vs);
         break;
 
     case VDP_YCBCR_FORMAT_YV12:
@@ -366,43 +332,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         }
 
         shader = &vs->device->egl.yuvi420_rgb;
-
-        if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
-                            dev->egl.surface, dev->egl.context)) {
-            VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());
-            return VDP_STATUS_RESOURCES;
-        }
-
-        glBindFramebuffer (GL_FRAMEBUFFER, vs->framebuffer);
-        CHECKEGL
-
-        status = glCheckFramebufferStatus(GL_FRAMEBUFFER) ;
-        if(status != GL_FRAMEBUFFER_COMPLETE) {
-            VDPAU_DBG("failed to make complete framebuffer object %x", status);
-        }
-
-        glUseProgram (shader->program);
-        CHECKEGL
-
-        glViewport(0, 0, vs->width, vs->height);
-        CHECKEGL
-
-        glClear (GL_COLOR_BUFFER_BIT);
-        CHECKEGL
-
-        glVertexAttribPointer (shader->position_loc, 2,
-                               GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
-                               vVertices);
-        CHECKEGL
-        glEnableVertexAttribArray (shader->position_loc);
-        CHECKEGL
-
-        glVertexAttribPointer (shader->texcoord_loc, 2,
-                               GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
-                               &vVertices[2]);
-        CHECKEGL
-        glEnableVertexAttribArray (shader->texcoord_loc);
-        CHECKEGL
+        shader_init(vs, shader);
 
         /* y component */
         glActiveTexture(GL_TEXTURE0);
@@ -440,17 +370,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         glUniform1i (shader->texture[2], 2);
         CHECKEGL
 
-        glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
-        CHECKEGL
-
-        glUseProgram(0);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        if (!eglMakeCurrent(dev->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-            VDPAU_DBG ("Could not set EGL context to none %x", eglGetError());
-            return VDP_STATUS_RESOURCES;
-        }
-
+        shader_draw(vs);
         break;
     }
 
