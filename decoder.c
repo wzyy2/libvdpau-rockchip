@@ -66,19 +66,15 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 	}
 
 	if (ret != VDP_STATUS_OK)
-		goto err_decoder;
+		goto err_data;
 
 	int handle = handle_create(dec);
 	if (handle == -1)
-		goto err_handle;
+		goto err_data;
 
 	*decoder = handle;
 	return VDP_STATUS_OK;
 
-err_handle:
-	if (dec->private_free)
-		dec->private_free(dec);
-err_decoder:
 err_data:
 	free(dec);
 err_ctx:
@@ -90,9 +86,6 @@ VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
 	decoder_ctx_t *dec = handle_get(decoder);
 	if (!dec)
 		return VDP_STATUS_INVALID_HANDLE;
-
-	if (dec->private_free)
-		dec->private_free(dec);
 
 	handle_destroy(decoder);
 	free(dec);

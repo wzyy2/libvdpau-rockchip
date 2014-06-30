@@ -98,7 +98,7 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
     dev->egl.surface = eglCreateWindowSurface(dev->egl.display, dev->egl.config,
                                      (EGLNativeWindowType)drawable, NULL);
     if (dev->egl.surface == EGL_NO_SURFACE) {
-        VDPAU_DBG ("Could not create EGL surface");
+        VDPAU_DBG ("Could not create EGL surface %x", eglGetError());
         return VDP_STATUS_RESOURCES;
     }
 
@@ -153,6 +153,7 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
 
     if (!eglMakeCurrent(dev->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
         VDPAU_DBG ("Could not set EGL context to none %x", eglGetError());
+        free(dev);
         return VDP_STATUS_RESOURCES;
     }
 	
@@ -189,9 +190,6 @@ VdpStatus vdp_preemption_callback_register(VdpDevice device,
                                            VdpPreemptionCallback callback,
                                            void *context)
 {
-	if (!callback)
-		return VDP_STATUS_INVALID_POINTER;
-
 	device_ctx_t *dev = handle_get(device);
 	if (!dev)
 		return VDP_STATUS_INVALID_HANDLE;

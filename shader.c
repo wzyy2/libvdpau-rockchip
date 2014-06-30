@@ -219,11 +219,11 @@ gl_init_shader (GLESShader *shader,
 			CHECKEGL
 			break;
 		case SHADER_COPY:
-			shader->texture[0] = glGetUniformLocation(shader->program, "s_ytex");
+			shader->texture[0] = glGetUniformLocation(shader->program, "s_tex");
 			CHECKEGL
 			break;
 		case SHADER_BRSWAP_COPY:
-			shader->texture[0] = glGetUniformLocation(shader->program, "s_ytex");
+			shader->texture[0] = glGetUniformLocation(shader->program, "s_tex");
 			CHECKEGL
 			break;
 	}

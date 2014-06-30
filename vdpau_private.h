@@ -64,8 +64,6 @@ typedef struct video_surface_ctx_struct
 	uint32_t width, height;
 	VdpChromaType chroma_type;
 	VdpYCbCrFormat source_format;
-	void *decoder_private;
-	void (*decoder_private_free)(struct video_surface_ctx_struct *surface);
 	
 	GLuint y_tex;
 	GLuint u_tex;
@@ -83,8 +81,6 @@ typedef struct decoder_ctx_struct
 	void *data;
 	device_ctx_t *device;
 	VdpStatus (*decode)(struct decoder_ctx_struct *decoder, VdpPictureInfo const *info, const int len, video_surface_ctx_t *output);
-	void *private;
-	void (*private_free)(struct decoder_ctx_struct *decoder);
 } decoder_ctx_t;
 
 typedef struct

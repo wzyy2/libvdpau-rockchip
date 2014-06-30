@@ -118,9 +118,6 @@ VdpStatus vdp_video_surface_destroy(VdpVideoSurface surface)
 	glDeleteFramebuffers (1, framebuffers);
 	glDeleteTextures (4, textures);
 
-	if (vs->decoder_private_free)
-		vs->decoder_private_free(vs);
-
 	handle_destroy(surface);
 	free(vs);
 
@@ -188,7 +185,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 	};
 	GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
 	device_ctx_t *dev = vs->device;
-	GLESShader shader;
+	GLESShader *shader;
 	GLenum status;
 
 	switch (source_ycbcr_format)
@@ -221,7 +218,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 			VDPAU_DBG("NV12 %d, %d %d %d", vs->width, source_pitches[0], source_pitches[1], source_pitches[2]);
 		}
 		
-		shader = vs->device->egl.yuvnv12_rgb;
+		shader = &vs->device->egl.yuvnv12_rgb;
 		
 		if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
 							dev->egl.surface, dev->egl.context)) {
@@ -237,7 +234,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 			VDPAU_DBG("failed to make complete framebuffer object %x", status);
 		}
 
-		glUseProgram (shader.program);
+		glUseProgram (shader->program);
 		CHECKEGL
 
 		glViewport(0, 0, vs->width, vs->height);
@@ -246,18 +243,18 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 		glClear (GL_COLOR_BUFFER_BIT);
 		CHECKEGL
 
-		glVertexAttribPointer (shader.position_loc, 2,
+		glVertexAttribPointer (shader->position_loc, 2,
 							   GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
 							   vVertices);
 		CHECKEGL
-		glEnableVertexAttribArray (shader.position_loc);
+		glEnableVertexAttribArray (shader->position_loc);
 		CHECKEGL
 
-		glVertexAttribPointer (shader.texcoord_loc, 2,
+		glVertexAttribPointer (shader->texcoord_loc, 2,
 							   GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
 							   &vVertices[2]);
 		CHECKEGL
-		glEnableVertexAttribArray (shader.texcoord_loc);
+		glEnableVertexAttribArray (shader->texcoord_loc);
 		CHECKEGL
 
 		/* y component */
@@ -269,7 +266,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 					 vs->height, 0, GL_LUMINANCE,
 					 GL_UNSIGNED_BYTE, source_data[0]);
 		CHECKEGL
-		glUniform1i (shader.texture[0], 0);
+		glUniform1i (shader->texture[0], 0);
 		CHECKEGL
 
 		/* uv component */
@@ -281,7 +278,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 					 vs->height/2, 0, GL_LUMINANCE_ALPHA,
 					 GL_UNSIGNED_BYTE, source_data[1]);
 		CHECKEGL
-		glUniform1i (shader.texture[1], 1);
+		glUniform1i (shader->texture[1], 1);
 		CHECKEGL
 
 		glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
@@ -303,7 +300,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 			VDPAU_DBG("YV12 %d, %d %d %d", vs->width, source_pitches[0], source_pitches[1], source_pitches[2]);
 		}
 		
-		shader = vs->device->egl.yuvi420_rgb;
+		shader = &vs->device->egl.yuvi420_rgb;
 		
 		if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
 							dev->egl.surface, dev->egl.context)) {
@@ -319,7 +316,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 			VDPAU_DBG("failed to make complete framebuffer object %x", status);
 		}
 
-		glUseProgram (shader.program);
+		glUseProgram (shader->program);
 		CHECKEGL
 
 		glViewport(0, 0, vs->width, vs->height);
@@ -328,18 +325,18 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 		glClear (GL_COLOR_BUFFER_BIT);
 		CHECKEGL
 
-		glVertexAttribPointer (shader.position_loc, 2,
+		glVertexAttribPointer (shader->position_loc, 2,
 							   GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
 							   vVertices);
 		CHECKEGL
-		glEnableVertexAttribArray (shader.position_loc);
+		glEnableVertexAttribArray (shader->position_loc);
 		CHECKEGL
 
-		glVertexAttribPointer (shader.texcoord_loc, 2,
+		glVertexAttribPointer (shader->texcoord_loc, 2,
 							   GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
 							   &vVertices[2]);
 		CHECKEGL
-		glEnableVertexAttribArray (shader.texcoord_loc);
+		glEnableVertexAttribArray (shader->texcoord_loc);
 		CHECKEGL
 
 		/* y component */
@@ -351,7 +348,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 					 vs->height, 0, GL_LUMINANCE,
 					 GL_UNSIGNED_BYTE, source_data[0]);
 		CHECKEGL
-		glUniform1i (shader.texture[0], 0);
+		glUniform1i (shader->texture[0], 0);
 		CHECKEGL
 
 		/* u component */
@@ -363,7 +360,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 					 vs->height/2, 0, GL_LUMINANCE,
 					 GL_UNSIGNED_BYTE, source_data[2]);
 		CHECKEGL
-		glUniform1i (shader.texture[1], 1);
+		glUniform1i (shader->texture[1], 1);
 		CHECKEGL
 
 		/* v component */
@@ -375,7 +372,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 					 vs->height/2, 0, GL_LUMINANCE,
 					 GL_UNSIGNED_BYTE, source_data[1]);
 		CHECKEGL
-		glUniform1i (shader.texture[2], 2);
+		glUniform1i (shader->texture[2], 2);
 		CHECKEGL
 
 		glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);

@@ -266,6 +266,8 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 			VDPAU_DBG("failed to make complete framebuffer object %x", status);
 		}
 
+		GLESShader *shader = &q->device->egl.copy;
+		
 		glClear (GL_COLOR_BUFFER_BIT);
 		CHECKEGL
 
@@ -274,26 +276,26 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 				os->video_dst_rect.y1-os->video_dst_rect.y0);
 		CHECKEGL
 
-		glUseProgram (q->device->egl.copy.program);
+		glUseProgram (shader->program);
 		CHECKEGL
 
-		glVertexAttribPointer (q->device->egl.copy.position_loc, 2, GL_FLOAT,
+		glVertexAttribPointer (shader->position_loc, 2, GL_FLOAT,
 			GL_FALSE, 4 * sizeof (GLfloat), vVertices);
 		CHECKEGL
-		glEnableVertexAttribArray (q->device->egl.copy.position_loc);
+		glEnableVertexAttribArray (shader->position_loc);
 		CHECKEGL
 
-		glVertexAttribPointer (q->device->egl.copy.texcoord_loc, 2, GL_FLOAT,
+		glVertexAttribPointer (shader->texcoord_loc, 2, GL_FLOAT,
 			GL_FALSE, 4 * sizeof (GLfloat), &vVertices[2]);
 		CHECKEGL
-		glEnableVertexAttribArray (q->device->egl.copy.texcoord_loc);
+		glEnableVertexAttribArray (shader->texcoord_loc);
 		CHECKEGL
 
 		glActiveTexture(GL_TEXTURE3);
 		CHECKEGL
 		glBindTexture (GL_TEXTURE_2D, os->vs->rgb_tex);
 		CHECKEGL
-		glUniform1i (q->device->egl.copy.texture[0], 3);
+		glUniform1i (shader->texture[0], 3);
 		CHECKEGL
 
 		glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
