@@ -2,7 +2,7 @@ TARGET = libvdpau_odroid.so.1
 SRC = device.c presentation_queue.c surface_output.c surface_video.c \
 	surface_bitmap.c video_mixer.c decoder.c handles.c \
 	rgba.c shader.c gles.c
-CFLAGS = -Wall -O3
+CFLAGS = -Wall -O3 -g
 LDFLAGS =
 LIBS = -lrt -lm -lX11 -lGLESv2 -lEGL
 CC = gcc

@@ -266,7 +266,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 			VDPAU_DBG("failed to make complete framebuffer object %x", status);
 		}
 
-		GLESShader *shader = &q->device->egl.copy;
+		shader_ctx_t *shader = &q->device->egl.copy;
 		
 		glClear (GL_COLOR_BUFFER_BIT);
 		CHECKEGL
@@ -326,7 +326,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 		};
 		GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
 
-		GLESShader *shader;
+		shader_ctx_t *shader;
 		if(os->rgba.format == VDP_RGBA_FORMAT_B8G8R8A8) {
 			shader = &q->device->egl.brswap;
 		} else {

@@ -185,7 +185,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 	};
 	GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
 	device_ctx_t *dev = vs->device;
-	GLESShader *shader;
+	shader_ctx_t *shader;
 	GLenum status;
 
 	switch (source_ycbcr_format)

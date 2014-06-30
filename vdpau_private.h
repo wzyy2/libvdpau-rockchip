@@ -39,7 +39,7 @@ typedef enum
     SHADER_YUVNV12_RGB,
     SHADER_COPY,
     SHADER_BRSWAP_COPY
-} GLESShaderTypes;
+} shader_type_t;
 
 typedef struct 
 {
@@ -52,7 +52,7 @@ typedef struct
     GLint texcoord_loc;
     
     GLuint texture[3];
-} GLESShader;
+} shader_ctx_t;
 
 typedef struct
 {
@@ -61,10 +61,10 @@ typedef struct
 	EGLContext context;
 	EGLSurface surface;
 	
-	GLESShader yuvi420_rgb;
-	GLESShader yuvnv12_rgb;
-	GLESShader copy;
-	GLESShader brswap;
+	shader_ctx_t yuvi420_rgb;
+	shader_ctx_t yuvnv12_rgb;
+	shader_ctx_t copy;
+	shader_ctx_t brswap;
 } device_egl_t;
 
 typedef struct
@@ -196,8 +196,8 @@ int handle_create(void *data);
 void *handle_get(int handle);
 void handle_destroy(int handle);
 
-int gl_init_shader (GLESShader *shader, GLESShaderTypes process_type);
-void gl_delete_shader (GLESShader *shader);
+int gl_init_shader (shader_ctx_t *shader, shader_type_t process_type);
+void gl_delete_shader (shader_ctx_t *shader);
 
 VdpStatus new_decoder_mpeg12(decoder_ctx_t *decoder);
 VdpStatus new_decoder_h264(decoder_ctx_t *decoder);

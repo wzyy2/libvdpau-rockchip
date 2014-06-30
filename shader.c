@@ -127,8 +127,8 @@ gl_load_shader (const char *shader_src,
  * Vertex shader is a predefined default, fragment shader can be configured
  * through process_type */
 static int
-gl_load_shaders (GLESShader *shader,
-                 GLESShaderTypes process_type)
+gl_load_shaders (shader_ctx_t *shader,
+                 shader_type_t process_type)
 {
     shader->vertex_shader = gl_load_shader (vertex_shader,
                                           GL_VERTEX_SHADER);
@@ -144,8 +144,8 @@ gl_load_shaders (GLESShader *shader,
 }
 
 int
-gl_init_shader (GLESShader *shader,
-                GLESShaderTypes process_type)
+gl_init_shader (shader_ctx_t *shader,
+                shader_type_t process_type)
 {
     int linked;
     GLint err;
@@ -231,7 +231,7 @@ gl_init_shader (GLESShader *shader,
 }
 
 void
-gl_delete_shader(GLESShader *shader)
+gl_delete_shader(shader_ctx_t *shader)
 {
     glDeleteShader (shader->vertex_shader);
     shader->vertex_shader = 0;
