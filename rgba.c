@@ -19,6 +19,7 @@
 
 #include <string.h>
 #include <sys/ioctl.h>
+
 #include "vdpau_private.h"
 #include "rgba.h"
 

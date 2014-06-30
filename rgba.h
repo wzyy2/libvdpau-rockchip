@@ -20,8 +20,6 @@
 #ifndef __RGBA_H__
 #define __RGBA_H__
 
-#include "vdpau_private.h"
-
 VdpStatus rgba_create(rgba_surface_t *rgba,
                       device_ctx_t *device,
                       uint32_t width,
