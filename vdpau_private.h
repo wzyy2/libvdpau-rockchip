@@ -43,7 +43,7 @@ typedef enum
     SHADER_BRSWAP_COPY
 } shader_type_t;
 
-typedef struct 
+typedef struct
 {
     GLuint program;
     GLuint vertex_shader;
@@ -52,88 +52,88 @@ typedef struct
     /* standard locations, used in most shaders */
     GLint position_loc;
     GLint texcoord_loc;
-    
+
     /* Used in YUYV & UYUV shaders */
     GLint stepX;
-    
+
     GLint texture[3];
 } shader_ctx_t;
 
 typedef struct
 {
-	EGLDisplay display;
-	EGLConfig config;
-	EGLContext context;
-	EGLSurface surface;
-	
-	shader_ctx_t yuvi420_rgb;
-	shader_ctx_t yuyv422_rgb;
-	shader_ctx_t uyvy422_rgb;
-	shader_ctx_t yuvnv12_rgb;
-	shader_ctx_t copy;
-	shader_ctx_t brswap;
+    EGLDisplay display;
+    EGLConfig config;
+    EGLContext context;
+    EGLSurface surface;
+
+    shader_ctx_t yuvi420_rgb;
+    shader_ctx_t yuyv422_rgb;
+    shader_ctx_t uyvy422_rgb;
+    shader_ctx_t yuvnv12_rgb;
+    shader_ctx_t copy;
+    shader_ctx_t brswap;
 } device_egl_t;
 
 typedef struct
 {
-	Display *display;
-	int screen;
-	VdpPreemptionCallback *preemption_callback;
-	void *preemption_callback_context;
-	
-	device_egl_t egl;
+    Display *display;
+    int screen;
+    VdpPreemptionCallback *preemption_callback;
+    void *preemption_callback_context;
+
+    device_egl_t egl;
 } device_ctx_t;
 
 typedef struct video_surface_ctx_struct
 {
-	device_ctx_t *device;
-	uint32_t width, height;
-	VdpChromaType chroma_type;
-	VdpYCbCrFormat source_format;
-	
-	GLuint y_tex;
-	GLuint u_tex;
-	GLuint v_tex;
+    device_ctx_t *device;
+    uint32_t width, height;
+    VdpChromaType chroma_type;
+    VdpYCbCrFormat source_format;
 
-	GLuint rgb_tex;
+    GLuint y_tex;
+    GLuint u_tex;
+    GLuint v_tex;
+
+    GLuint rgb_tex;
 
     GLuint framebuffer;
 } video_surface_ctx_t;
 
 typedef struct decoder_ctx_struct
 {
-	uint32_t width, height;
-	VdpDecoderProfile profile;
-	void *data;
-	device_ctx_t *device;
-	VdpStatus (*decode)(struct decoder_ctx_struct *decoder, VdpPictureInfo const *info, const int len, video_surface_ctx_t *output);
+    uint32_t width, height;
+    VdpDecoderProfile profile;
+    void *data;
+    device_ctx_t *device;
+    VdpStatus (*decode)(struct decoder_ctx_struct *decoder, VdpPictureInfo const *info, const int len, video_surface_ctx_t *output);
 } decoder_ctx_t;
 
 typedef struct
 {
-	device_ctx_t *device;
-	Drawable drawable;
-	
-	EGLSurface surface;
+    device_ctx_t *device;
+    Drawable drawable;
+
+    EGLSurface surface;
     EGLContext context;
     GLuint overlay;
 } queue_target_ctx_t;
 
 typedef struct
 {
-	queue_target_ctx_t *target;
-	VdpColor background;
-	device_ctx_t *device;
+    queue_target_ctx_t *target;
+    VdpColor background;
+    device_ctx_t *device;
 } queue_ctx_t;
 
 typedef struct
 {
-	device_ctx_t *device;
-	int csc_change;
-	float brightness;
-	float contrast;
-	float saturation;
-	float hue;
+    device_ctx_t *device;
+    int csc_change;
+    float brightness;
+    float contrast;
+    float saturation;
+    float hue;
 } mixer_ctx_t;
 
 #define RGBA_FLAG_DIRTY (1 << 0)
@@ -141,30 +141,30 @@ typedef struct
 
 typedef struct
 {
-	device_ctx_t *device;
-	VdpRGBAFormat format;
-	uint32_t width, height;
-	void *data;
-	VdpRect dirty;
-	uint32_t flags;
+    device_ctx_t *device;
+    VdpRGBAFormat format;
+    uint32_t width, height;
+    void *data;
+    VdpRect dirty;
+    uint32_t flags;
 } rgba_surface_t;
 
 typedef struct
 {
-	rgba_surface_t rgba;
-	video_surface_ctx_t *vs;
-	VdpRect video_src_rect, video_dst_rect;
-	int csc_change;
-	float brightness;
-	float contrast;
-	float saturation;
-	float hue;
+    rgba_surface_t rgba;
+    video_surface_ctx_t *vs;
+    VdpRect video_src_rect, video_dst_rect;
+    int csc_change;
+    float brightness;
+    float contrast;
+    float saturation;
+    float hue;
 } output_surface_ctx_t;
 
 typedef struct
 {
-	rgba_surface_t rgba;
-	VdpBool frequently_accessed;
+    rgba_surface_t rgba;
+    VdpBool frequently_accessed;
 } bitmap_surface_ctx_t;
 
 #ifndef ARRAY_SIZE
@@ -172,14 +172,14 @@ typedef struct
 #endif
 
 #define max(a, b) \
-	({ __typeof__ (a) _a = (a); \
-	   __typeof__ (b) _b = (b); \
-	  _a > _b ? _a : _b; })
+    ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+      _a > _b ? _a : _b; })
 
 #define min(a, b) \
-	({ __typeof__ (a) _a = (a); \
-	   __typeof__ (b) _b = (b); \
-	  _a < _b ? _a : _b; })
+    ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+      _a < _b ? _a : _b; })
 
 #define min_nz(a, b) \
         ({ __typeof__ (a) _a = (a); \

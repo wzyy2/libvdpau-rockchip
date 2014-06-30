@@ -27,70 +27,70 @@ VdpStatus vdp_decoder_create(VdpDevice device,
                              uint32_t max_references,
                              VdpDecoder *decoder)
 {
-	device_ctx_t *dev = handle_get(device);
-	if (!dev)
-		return VDP_STATUS_INVALID_HANDLE;
+    device_ctx_t *dev = handle_get(device);
+    if (!dev)
+        return VDP_STATUS_INVALID_HANDLE;
 
-	if (max_references > 16)
-		return VDP_STATUS_ERROR;
+    if (max_references > 16)
+        return VDP_STATUS_ERROR;
 
-	decoder_ctx_t *dec = calloc(1, sizeof(decoder_ctx_t));
-	if (!dec)
-		goto err_ctx;
+    decoder_ctx_t *dec = calloc(1, sizeof(decoder_ctx_t));
+    if (!dec)
+        goto err_ctx;
 
-	dec->device = dev;
-	dec->profile = profile;
-	dec->width = width;
-	dec->height = height;
+    dec->device = dev;
+    dec->profile = profile;
+    dec->width = width;
+    dec->height = height;
 
-	VdpStatus ret = VDP_STATUS_OK;
-	switch (profile)
-	{
-	case VDP_DECODER_PROFILE_MPEG1:
-	case VDP_DECODER_PROFILE_MPEG2_SIMPLE:
-	case VDP_DECODER_PROFILE_MPEG2_MAIN:
-		break;
+    VdpStatus ret = VDP_STATUS_OK;
+    switch (profile)
+    {
+    case VDP_DECODER_PROFILE_MPEG1:
+    case VDP_DECODER_PROFILE_MPEG2_SIMPLE:
+    case VDP_DECODER_PROFILE_MPEG2_MAIN:
+        break;
 
-	case VDP_DECODER_PROFILE_H264_BASELINE:
-	case VDP_DECODER_PROFILE_H264_MAIN:
-	case VDP_DECODER_PROFILE_H264_HIGH:
-		break;
+    case VDP_DECODER_PROFILE_H264_BASELINE:
+    case VDP_DECODER_PROFILE_H264_MAIN:
+    case VDP_DECODER_PROFILE_H264_HIGH:
+        break;
 
-	case VDP_DECODER_PROFILE_MPEG4_PART2_SP:
-	case VDP_DECODER_PROFILE_MPEG4_PART2_ASP:
-		break;
+    case VDP_DECODER_PROFILE_MPEG4_PART2_SP:
+    case VDP_DECODER_PROFILE_MPEG4_PART2_ASP:
+        break;
 
-	default:
-		ret = VDP_STATUS_INVALID_DECODER_PROFILE;
-		break;
-	}
+    default:
+        ret = VDP_STATUS_INVALID_DECODER_PROFILE;
+        break;
+    }
 
-	if (ret != VDP_STATUS_OK)
-		goto err_data;
+    if (ret != VDP_STATUS_OK)
+        goto err_data;
 
-	int handle = handle_create(dec);
-	if (handle == -1)
-		goto err_data;
+    int handle = handle_create(dec);
+    if (handle == -1)
+        goto err_data;
 
-	*decoder = handle;
-	return VDP_STATUS_OK;
+    *decoder = handle;
+    return VDP_STATUS_OK;
 
 err_data:
-	free(dec);
+    free(dec);
 err_ctx:
-	return VDP_STATUS_RESOURCES;
+    return VDP_STATUS_RESOURCES;
 }
 
 VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
 {
-	decoder_ctx_t *dec = handle_get(decoder);
-	if (!dec)
-		return VDP_STATUS_INVALID_HANDLE;
+    decoder_ctx_t *dec = handle_get(decoder);
+    if (!dec)
+        return VDP_STATUS_INVALID_HANDLE;
 
-	handle_destroy(decoder);
-	free(dec);
+    handle_destroy(decoder);
+    free(dec);
 
-	return VDP_STATUS_OK;
+    return VDP_STATUS_OK;
 }
 
 VdpStatus vdp_decoder_get_parameters(VdpDecoder decoder,
@@ -98,20 +98,20 @@ VdpStatus vdp_decoder_get_parameters(VdpDecoder decoder,
                                      uint32_t *width,
                                      uint32_t *height)
 {
-	decoder_ctx_t *dec = handle_get(decoder);
-	if (!dec)
-		return VDP_STATUS_INVALID_HANDLE;
+    decoder_ctx_t *dec = handle_get(decoder);
+    if (!dec)
+        return VDP_STATUS_INVALID_HANDLE;
 
-	if (profile)
-		*profile = dec->profile;
+    if (profile)
+        *profile = dec->profile;
 
-	if (width)
-		*width = dec->width;
+    if (width)
+        *width = dec->width;
 
-	if (height)
-		*height = dec->height;
+    if (height)
+        *height = dec->height;
 
-	return VDP_STATUS_OK;
+    return VDP_STATUS_OK;
 }
 
 VdpStatus vdp_decoder_render(VdpDecoder decoder,
@@ -120,25 +120,25 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
                              uint32_t bitstream_buffer_count,
                              VdpBitstreamBuffer const *bitstream_buffers)
 {
-	decoder_ctx_t *dec = handle_get(decoder);
-	if (!dec)
-		return VDP_STATUS_INVALID_HANDLE;
+    decoder_ctx_t *dec = handle_get(decoder);
+    if (!dec)
+        return VDP_STATUS_INVALID_HANDLE;
 
-	video_surface_ctx_t *vid = handle_get(target);
-	if (!vid)
-		return VDP_STATUS_INVALID_HANDLE;
+    video_surface_ctx_t *vid = handle_get(target);
+    if (!vid)
+        return VDP_STATUS_INVALID_HANDLE;
 
-	vid->source_format = INTERNAL_YCBCR_FORMAT;
-	unsigned int i, pos = 0;
+    vid->source_format = INTERNAL_YCBCR_FORMAT;
+    unsigned int i, pos = 0;
 
-	for (i = 0; i < bitstream_buffer_count; i++)
-	{
-		memcpy(dec->data + pos, bitstream_buffers[i].bitstream, bitstream_buffers[i].bitstream_bytes);
-		pos += bitstream_buffers[i].bitstream_bytes;
-	}
+    for (i = 0; i < bitstream_buffer_count; i++)
+    {
+        memcpy(dec->data + pos, bitstream_buffers[i].bitstream, bitstream_buffers[i].bitstream_bytes);
+        pos += bitstream_buffers[i].bitstream_bytes;
+    }
 
-//	return dec->decode(dec, picture_info, pos, vid);
-	return VDP_STATUS_OK;
+//  return dec->decode(dec, picture_info, pos, vid);
+    return VDP_STATUS_OK;
 }
 
 VdpStatus vdp_decoder_query_capabilities(VdpDevice device,
@@ -149,36 +149,36 @@ VdpStatus vdp_decoder_query_capabilities(VdpDevice device,
                                          uint32_t *max_width,
                                          uint32_t *max_height)
 {
-	if (!is_supported || !max_level || !max_macroblocks || !max_width || !max_height)
-		return VDP_STATUS_INVALID_POINTER;
+    if (!is_supported || !max_level || !max_macroblocks || !max_width || !max_height)
+        return VDP_STATUS_INVALID_POINTER;
 
-	device_ctx_t *dev = handle_get(device);
-	if (!dev)
-		return VDP_STATUS_INVALID_HANDLE;
+    device_ctx_t *dev = handle_get(device);
+    if (!dev)
+        return VDP_STATUS_INVALID_HANDLE;
 
-	// guessed in lack of documentation, bigger pictures should be possible
-	*max_level = 16;
-	*max_width = 3840;
-	*max_height = 2160;
-	*max_macroblocks = (*max_width * *max_height) / (16 * 16);
+    // guessed in lack of documentation, bigger pictures should be possible
+    *max_level = 16;
+    *max_width = 3840;
+    *max_height = 2160;
+    *max_macroblocks = (*max_width * *max_height) / (16 * 16);
 
-	switch (profile)
-	{
-	case VDP_DECODER_PROFILE_MPEG1:
-	case VDP_DECODER_PROFILE_MPEG2_SIMPLE:
-	case VDP_DECODER_PROFILE_MPEG2_MAIN:
-	case VDP_DECODER_PROFILE_H264_BASELINE:
-	case VDP_DECODER_PROFILE_H264_MAIN:
-	case VDP_DECODER_PROFILE_H264_HIGH:
-	case VDP_DECODER_PROFILE_MPEG4_PART2_SP:
-	case VDP_DECODER_PROFILE_MPEG4_PART2_ASP:
-		*is_supported = VDP_TRUE;
-		break;
+    switch (profile)
+    {
+    case VDP_DECODER_PROFILE_MPEG1:
+    case VDP_DECODER_PROFILE_MPEG2_SIMPLE:
+    case VDP_DECODER_PROFILE_MPEG2_MAIN:
+    case VDP_DECODER_PROFILE_H264_BASELINE:
+    case VDP_DECODER_PROFILE_H264_MAIN:
+    case VDP_DECODER_PROFILE_H264_HIGH:
+    case VDP_DECODER_PROFILE_MPEG4_PART2_SP:
+    case VDP_DECODER_PROFILE_MPEG4_PART2_ASP:
+        *is_supported = VDP_TRUE;
+        break;
 
-	default:
-		*is_supported = VDP_FALSE;
-		break;
-	}
+    default:
+        *is_supported = VDP_FALSE;
+        break;
+    }
 
-	return VDP_STATUS_OK;
+    return VDP_STATUS_OK;
 }

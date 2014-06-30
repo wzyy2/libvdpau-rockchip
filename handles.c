@@ -24,53 +24,53 @@
 
 static struct
 {
-	void **data;
-	int size;
+    void **data;
+    int size;
 } ht;
 
 int handle_create(void *data)
 {
-	int index;
+    int index;
 
-	if (!data)
-		return -1;
+    if (!data)
+        return -1;
 
-	for (index = 0; index < ht.size; index++)
-		if (ht.data[index] == NULL)
-			break;
+    for (index = 0; index < ht.size; index++)
+        if (ht.data[index] == NULL)
+            break;
 
-	if (index >= ht.size)
-	{
-		int new_size = ht.size ? ht.size * 2 : INITIAL_SIZE;
-		void **new_data = realloc(ht.data, new_size * sizeof(void *));
-		if (!new_data)
-			return -1;
+    if (index >= ht.size)
+    {
+        int new_size = ht.size ? ht.size * 2 : INITIAL_SIZE;
+        void **new_data = realloc(ht.data, new_size * sizeof(void *));
+        if (!new_data)
+            return -1;
 
-		memset(new_data + ht.size, 0, (new_size - ht.size) * sizeof(void *));
-		ht.data = new_data;
-		ht.size = new_size;
-	}
+        memset(new_data + ht.size, 0, (new_size - ht.size) * sizeof(void *));
+        ht.data = new_data;
+        ht.size = new_size;
+    }
 
-	ht.data[index] = data;
-	return index + 1;
+    ht.data[index] = data;
+    return index + 1;
 }
 
 void *handle_get(int handle)
 {
-	if (handle == VDP_INVALID_HANDLE)
-		return NULL;
+    if (handle == VDP_INVALID_HANDLE)
+        return NULL;
 
-	int index = handle - 1;
-	if (index < ht.size)
-		return ht.data[index];
+    int index = handle - 1;
+    if (index < ht.size)
+        return ht.data[index];
 
-	return NULL;
+    return NULL;
 }
 
 void handle_destroy(int handle)
 {
-	int index = handle - 1;
+    int index = handle - 1;
 
-	if (index < ht.size)
-		ht.data[index] = NULL;
+    if (index < ht.size)
+        ht.data[index] = NULL;
 }

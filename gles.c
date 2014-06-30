@@ -6,135 +6,135 @@
 
 #include "vdpau_private.h"
 
-const char *vertex_shader =	"attribute vec4 vPosition;"
-	"attribute vec2 aTexcoord;"
-	"varying vec2 vTexcoord;"
-	"void main(void) {"
-	"   gl_Position = vPosition;"
-	"   vTexcoord = aTexcoord;"
-	"}";
+const char *vertex_shader = "attribute vec4 vPosition;"
+    "attribute vec2 aTexcoord;"
+    "varying vec2 vTexcoord;"
+    "void main(void) {"
+    "   gl_Position = vPosition;"
+    "   vTexcoord = aTexcoord;"
+    "}";
 
 static const char* fragment_shaders[] = {
     /* YUVI420 RGB */
-	"precision mediump float;"
-	"varying vec2 vTexcoord;"
-	"uniform sampler2D s_ytex,s_utex,s_vtex;"
-	"const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
-	"const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
-	"const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
-	"const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
-	"void main(void) {"
-	"  float r,g,b;"
-	"  vec3 yuv;"
-	"  yuv.x=texture2D(s_ytex,vTexcoord).r;"
-	"  yuv.y=texture2D(s_utex,vTexcoord).r;"
-	"  yuv.z=texture2D(s_vtex,vTexcoord).r;"
-	"  yuv += offset;"
-	"  r = dot(yuv, rcoeff);"
-	"  g = dot(yuv, gcoeff);"
-	"  b = dot(yuv, bcoeff);"
-	"  gl_FragColor=vec4(r,g,b,1.0);"
-	"}",
-	
-	/* YUYV -> RGB */
-	"precision mediump float;"
-	"uniform sampler2D s_tex;"
-	"varying vec2      vTexcoord;"
-	"uniform float     stepX;"
-	"const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
-	"const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
-	"const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
-	"const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
-	"void main(void)"
-	"{"
-	"  vec2 pos    = vTexcoord;"
-	"  pos         = vec2(pos.x - stepX * 0.25, pos.y);"
-	"  float f     = fract(pos.x / stepX);"
-	""
-	"  vec4 c1 = texture2D(s_tex, vec2(pos.x + (0.5 - f.x) * stepX, pos.y));"
-	"  vec4 c2 = texture2D(s_tex, vec2(pos.x + (1.5 - f.x) * stepX, pos.y));"
-	""
-	"  float leftY   = mix(c1.b, c1.r, f.x * 2.0);"
-	"  float rightY  = mix(c1.r, c2.b, f.x * 2.0 - 1.0);"
-	"  vec2  outUV   = mix(c1.ga, c2.ga, f.x);"
-	""
-	"  float outY    = mix(leftY, rightY, step(0.5, f.x));"
-	"  vec4  yuv     = vec4(outY, outUV, 1.0);"
-	"  "
-	"  yuv += offset;"
-	"  r = dot(yuv, rcoeff);"
-	"  g = dot(yuv, gcoeff);"
-	"  b = dot(yuv, bcoeff);"
-	"  gl_FragColor=vec4(r,g,b,1.0);"
-	"}",
-	
-	/* UYVY -> RGB */
-	"precision mediump float;"
-	"uniform sampler2D s_tex;"
-	"varying vec2      vTexcoord;"
-	"uniform float     stepX;"
-	"const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
-	"const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
-	"const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
-	"const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
-	"void main(void)"
-	"{"
-	"  vec2 pos    = vTexcoord;"
-	"  pos         = vec2(pos.x - stepX * 0.25, pos.y);"
-	"  float f     = fract(pos.x / stepX);"
-	""
-	"  vec4 c1 = texture2D(s_tex, vec2(pos.x + (0.5 - f.x) * stepX, pos.y));"
-	"  vec4 c2 = texture2D(s_tex, vec2(pos.x + (1.5 - f.x) * stepX, pos.y));"
-	""
-	"  float leftY   = mix(c1.g, c1.a, f.x * 2.0);"
-	"  float rightY  = mix(c1.a, c2.g, f.x * 2.0 - 1.0);"
-	"  vec2  outUV   = mix(c1.br, c2.br, f.x);"
-	""
-	"  float outY    = mix(leftY, rightY, step(0.5, f.x));"
-	"  vec4  yuv     = vec4(outY, outUV, 1.0);"
-	"  "
-	"  yuv += offset;"
-	"  r = dot(yuv, rcoeff);"
-	"  g = dot(yuv, gcoeff);"
-	"  b = dot(yuv, bcoeff);"
-	"  gl_FragColor=vec4(r,g,b,1.0);"
-	"}",
-	
-	/* NV12/NV21 to RGB conversion */
-	"precision mediump float;"
-	"varying vec2 vTexcoord;"
-	"uniform sampler2D s_ytex,s_uvtex;"
-	"const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
-	"const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
-	"const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
-	"const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
-	"void main(void) {"
-	"  float r,g,b;"
-	"  vec3 yuv;"
-	"  yuv.x=texture2D(s_ytex,vTexcoord).r;"
-	"  yuv.yz=texture2D(s_uvtex,vTexcoord).ra;"
-	"  yuv += offset;"
-	"  r = dot(yuv, rcoeff);"
-	"  g = dot(yuv, gcoeff);"
-	"  b = dot(yuv, bcoeff);"
-	"  gl_FragColor=vec4(r,g,b,1.0);"
-	"}",
+    "precision mediump float;"
+    "varying vec2 vTexcoord;"
+    "uniform sampler2D s_ytex,s_utex,s_vtex;"
+    "const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
+    "const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
+    "const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
+    "const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
+    "void main(void) {"
+    "  float r,g,b;"
+    "  vec3 yuv;"
+    "  yuv.x=texture2D(s_ytex,vTexcoord).r;"
+    "  yuv.y=texture2D(s_utex,vTexcoord).r;"
+    "  yuv.z=texture2D(s_vtex,vTexcoord).r;"
+    "  yuv += offset;"
+    "  r = dot(yuv, rcoeff);"
+    "  g = dot(yuv, gcoeff);"
+    "  b = dot(yuv, bcoeff);"
+    "  gl_FragColor=vec4(r,g,b,1.0);"
+    "}",
 
-	/* COPY */
+    /* YUYV -> RGB */
     "precision mediump float;"
-	"varying vec2 vTexcoord;"
-	"uniform sampler2D s_tex;"
-	"void main(void) {"
-	"	gl_FragColor = texture2D(s_tex, vTexcoord);"
-	"}",
-	
-	/* BRSWAP_COPY */
+    "uniform sampler2D s_tex;"
+    "varying vec2      vTexcoord;"
+    "uniform float     stepX;"
+    "const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
+    "const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
+    "const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
+    "const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
+    "void main(void)"
+    "{"
+    "  vec2 pos    = vTexcoord;"
+    "  pos         = vec2(pos.x - stepX * 0.25, pos.y);"
+    "  float f     = fract(pos.x / stepX);"
+    ""
+    "  vec4 c1 = texture2D(s_tex, vec2(pos.x + (0.5 - f.x) * stepX, pos.y));"
+    "  vec4 c2 = texture2D(s_tex, vec2(pos.x + (1.5 - f.x) * stepX, pos.y));"
+    ""
+    "  float leftY   = mix(c1.b, c1.r, f.x * 2.0);"
+    "  float rightY  = mix(c1.r, c2.b, f.x * 2.0 - 1.0);"
+    "  vec2  outUV   = mix(c1.ga, c2.ga, f.x);"
+    ""
+    "  float outY    = mix(leftY, rightY, step(0.5, f.x));"
+    "  vec4  yuv     = vec4(outY, outUV, 1.0);"
+    "  "
+    "  yuv += offset;"
+    "  r = dot(yuv, rcoeff);"
+    "  g = dot(yuv, gcoeff);"
+    "  b = dot(yuv, bcoeff);"
+    "  gl_FragColor=vec4(r,g,b,1.0);"
+    "}",
+
+    /* UYVY -> RGB */
     "precision mediump float;"
-	"varying vec2 vTexcoord;"
-	"uniform sampler2D s_tex;"
-	"void main(void) {"
-	"	gl_FragColor = texture2D(s_tex, vTexcoord).bgra;"
-	"}"
+    "uniform sampler2D s_tex;"
+    "varying vec2      vTexcoord;"
+    "uniform float     stepX;"
+    "const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
+    "const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
+    "const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
+    "const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
+    "void main(void)"
+    "{"
+    "  vec2 pos    = vTexcoord;"
+    "  pos         = vec2(pos.x - stepX * 0.25, pos.y);"
+    "  float f     = fract(pos.x / stepX);"
+    ""
+    "  vec4 c1 = texture2D(s_tex, vec2(pos.x + (0.5 - f.x) * stepX, pos.y));"
+    "  vec4 c2 = texture2D(s_tex, vec2(pos.x + (1.5 - f.x) * stepX, pos.y));"
+    ""
+    "  float leftY   = mix(c1.g, c1.a, f.x * 2.0);"
+    "  float rightY  = mix(c1.a, c2.g, f.x * 2.0 - 1.0);"
+    "  vec2  outUV   = mix(c1.br, c2.br, f.x);"
+    ""
+    "  float outY    = mix(leftY, rightY, step(0.5, f.x));"
+    "  vec4  yuv     = vec4(outY, outUV, 1.0);"
+    "  "
+    "  yuv += offset;"
+    "  r = dot(yuv, rcoeff);"
+    "  g = dot(yuv, gcoeff);"
+    "  b = dot(yuv, bcoeff);"
+    "  gl_FragColor=vec4(r,g,b,1.0);"
+    "}",
+
+    /* NV12/NV21 to RGB conversion */
+    "precision mediump float;"
+    "varying vec2 vTexcoord;"
+    "uniform sampler2D s_ytex,s_uvtex;"
+    "const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
+    "const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
+    "const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
+    "const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
+    "void main(void) {"
+    "  float r,g,b;"
+    "  vec3 yuv;"
+    "  yuv.x=texture2D(s_ytex,vTexcoord).r;"
+    "  yuv.yz=texture2D(s_uvtex,vTexcoord).ra;"
+    "  yuv += offset;"
+    "  r = dot(yuv, rcoeff);"
+    "  g = dot(yuv, gcoeff);"
+    "  b = dot(yuv, bcoeff);"
+    "  gl_FragColor=vec4(r,g,b,1.0);"
+    "}",
+
+    /* COPY */
+    "precision mediump float;"
+    "varying vec2 vTexcoord;"
+    "uniform sampler2D s_tex;"
+    "void main(void) {"
+    "   gl_FragColor = texture2D(s_tex, vTexcoord);"
+    "}",
+
+    /* BRSWAP_COPY */
+    "precision mediump float;"
+    "varying vec2 vTexcoord;"
+    "uniform sampler2D s_tex;"
+    "void main(void) {"
+    "   gl_FragColor = texture2D(s_tex, vTexcoord).bgra;"
+    "}"
 
 };
 
@@ -178,8 +178,8 @@ gl_load_shader (const char *shader_src,
 
         glDeleteShader (shader);
         shader = 0;
-	} else {
-		VDPAU_DBG ("Shader compiled succesfully");
+    } else {
+        VDPAU_DBG ("Shader compiled succesfully");
     }
 
     return shader;
@@ -267,34 +267,34 @@ gl_init_shader (shader_ctx_t *shader,
     shader->position_loc = glGetAttribLocation(shader->program, "vPosition");
     shader->texcoord_loc = glGetAttribLocation(shader->program, "aTexcoord");
 
-	switch(process_type) {
-		case SHADER_YUVI420_RGB:
-			shader->texture[0] = glGetUniformLocation(shader->program, "s_ytex");
-			CHECKEGL
-			shader->texture[1] = glGetUniformLocation(shader->program, "s_utex");
-			CHECKEGL
-			shader->texture[2] = glGetUniformLocation(shader->program, "s_vtex");
-			CHECKEGL
-			break;
-		case SHADER_YUVNV12_RGB:
-			shader->texture[0] = glGetUniformLocation(shader->program, "s_ytex");
-			CHECKEGL
-			shader->texture[1] = glGetUniformLocation(shader->program, "s_uvtex");
-			CHECKEGL
-			break;
-		case SHADER_YUYV422_RGB:
-		case SHADER_UYVY422_RGB:
-			shader->texture[0] = glGetUniformLocation(shader->program, "s_tex");
-			CHECKEGL
-			shader->stepX = glGetUniformLocation(shader->program, "stepX");
-			CHECKEGL
-			break;
-		case SHADER_COPY:
-		case SHADER_BRSWAP_COPY:
-			shader->texture[0] = glGetUniformLocation(shader->program, "s_tex");
-			CHECKEGL
-			break;
-	}
+    switch(process_type) {
+        case SHADER_YUVI420_RGB:
+            shader->texture[0] = glGetUniformLocation(shader->program, "s_ytex");
+            CHECKEGL
+            shader->texture[1] = glGetUniformLocation(shader->program, "s_utex");
+            CHECKEGL
+            shader->texture[2] = glGetUniformLocation(shader->program, "s_vtex");
+            CHECKEGL
+            break;
+        case SHADER_YUVNV12_RGB:
+            shader->texture[0] = glGetUniformLocation(shader->program, "s_ytex");
+            CHECKEGL
+            shader->texture[1] = glGetUniformLocation(shader->program, "s_uvtex");
+            CHECKEGL
+            break;
+        case SHADER_YUYV422_RGB:
+        case SHADER_UYVY422_RGB:
+            shader->texture[0] = glGetUniformLocation(shader->program, "s_tex");
+            CHECKEGL
+            shader->stepX = glGetUniformLocation(shader->program, "stepX");
+            CHECKEGL
+            break;
+        case SHADER_COPY:
+        case SHADER_BRSWAP_COPY:
+            shader->texture[0] = glGetUniformLocation(shader->program, "s_tex");
+            CHECKEGL
+            break;
+    }
     return 0;
 }
 
@@ -319,20 +319,20 @@ gl_create_texture(GLuint tex_filter)
     glGenTextures (1, &tex_id);
     if (!tex_id) {
         VDPAU_DBG ("Could not create texture");
-		return 0;
-	}
+        return 0;
+    }
     glBindTexture (GL_TEXTURE_2D, tex_id);
-	CHECKEGL
+    CHECKEGL
 
     glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, tex_filter);
-	CHECKEGL
+    CHECKEGL
     glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, tex_filter);
-	CHECKEGL
+    CHECKEGL
 
     glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	CHECKEGL
+    CHECKEGL
     glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	CHECKEGL
+    CHECKEGL
 
     return tex_id;
 }
