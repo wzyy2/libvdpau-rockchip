@@ -264,7 +264,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, vs->y_tex);
         CHECKEGL
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vs->width,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vs->width/2,
                      vs->height, 0, GL_RGBA,
                      GL_UNSIGNED_BYTE, source_data[0]);
         CHECKEGL
@@ -279,6 +279,8 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 
     case VDP_YCBCR_FORMAT_Y8U8V8A8:
     case VDP_YCBCR_FORMAT_V8U8Y8A8:
+        if (vs->chroma_type != VDP_CHROMA_TYPE_444)
+            return VDP_STATUS_INVALID_CHROMA_TYPE;
 
         break;
 
@@ -388,7 +390,7 @@ VdpStatus vdp_video_surface_query_capabilities(VdpDevice device,
     if (!dev)
         return VDP_STATUS_INVALID_HANDLE;
 
-    *is_supported = surface_chroma_type == VDP_CHROMA_TYPE_420;
+    *is_supported = surface_chroma_type == VDP_CHROMA_TYPE_420 || surface_chroma_type == VDP_CHROMA_TYPE_422;
     *max_width = 8192;
     *max_height = 8192;
 
