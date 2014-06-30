@@ -24,7 +24,6 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include "rgba.h"
-#include "gles.h"
 
 static uint64_t get_time(void)
 {

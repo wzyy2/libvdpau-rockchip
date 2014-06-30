@@ -198,6 +198,7 @@ void handle_destroy(int handle);
 
 int gl_init_shader (shader_ctx_t *shader, shader_type_t process_type);
 void gl_delete_shader (shader_ctx_t *shader);
+GLuint gl_create_texture(GLuint tex_filter);
 
 VdpStatus new_decoder_mpeg12(decoder_ctx_t *decoder);
 VdpStatus new_decoder_h264(decoder_ctx_t *decoder);

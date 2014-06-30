@@ -19,7 +19,6 @@
 
 #include <string.h>
 #include "vdpau_private.h"
-#include "gles.h"
 
 VdpStatus vdp_video_surface_create(VdpDevice device,
                                    VdpChromaType chroma_type,
