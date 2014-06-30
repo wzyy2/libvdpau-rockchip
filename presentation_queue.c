@@ -293,7 +293,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 		CHECKEGL
 		glBindTexture (GL_TEXTURE_2D, os->vs->rgb_tex);
 		CHECKEGL
-		glUniform1i (q->device->egl.rgb_tex_loc, 3);
+		glUniform1i (q->device->egl.copy.texture[0], 3);
 		CHECKEGL
 
 		glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
@@ -325,13 +325,10 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 		GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
 
 		GLESShader *shader;
-		GLuint texture_loc;
 		if(os->rgba.format == VDP_RGBA_FORMAT_B8G8R8A8) {
 			shader = &q->device->egl.brswap;
-			texture_loc = q->device->egl.bgr_tex_loc;
 		} else {
 			shader = &q->device->egl.copy;
-			texture_loc = q->device->egl.rgb_tex_loc;
 		}
 
 		glUseProgram (shader->program);
@@ -360,7 +357,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, os->rgba.width, os->rgba.height, 0, GL_RGBA,
 				  GL_UNSIGNED_BYTE, os->rgba.data);
 		CHECKEGL
-		glUniform1i (texture_loc, 0);
+		glUniform1i (shader->texture[0], 0);
 		CHECKEGL
 		
 		glEnable(GL_BLEND);

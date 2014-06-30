@@ -172,6 +172,25 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 
 	vs->source_format = source_ycbcr_format;
 
+	GLfloat vVertices[] =
+	{
+		-1.0f, -1.0f,
+		0.0f, 1.0f,
+
+		1.0f, -1.0f,
+		1.0f, 1.0f,
+
+		1.0f, 1.0f,
+		1.0f, 0.0f,
+
+		-1.0f, 1.0f,
+		0.0f, 0.0f,
+	};
+	GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
+	device_ctx_t *dev = vs->device;
+	GLESShader shader;
+	GLenum status;
+
 	switch (source_ycbcr_format)
 	{
 	case VDP_YCBCR_FORMAT_YUYV:
@@ -196,48 +215,13 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 	case VDP_YCBCR_FORMAT_NV12:
 		if (vs->chroma_type != VDP_CHROMA_TYPE_420)
 			return VDP_STATUS_INVALID_CHROMA_TYPE;
+		
 		VDPAU_DBG("NV12");
-		/*
-		src = source_data[0];
-		dst = vs->data;
-		for (i = 0; i < vs->height; i++) {
-			memcpy(dst, src, vs->width);
-			src += source_pitches[0];
-			dst += vs->width;
-		}
-		src = source_data[1];
-		dst = vs->data + vs->plane_size;
-		for (i = 0; i < vs->height / 2; i++) {
-			memcpy(dst, src, vs->width);
-			src += source_pitches[1];
-			dst += vs->width;
-		}
-		*/
-		break;
-
-	case VDP_YCBCR_FORMAT_YV12:
-		if (vs->chroma_type != VDP_CHROMA_TYPE_420)
-			return VDP_STATUS_INVALID_CHROMA_TYPE;
 		if (vs->width != source_pitches[0]) {
-			VDPAU_DBG("YV12 %d, %d %d %d", vs->width, source_pitches[0], source_pitches[1], source_pitches[2]);
+			VDPAU_DBG("NV12 %d, %d %d %d", vs->width, source_pitches[0], source_pitches[1], source_pitches[2]);
 		}
 		
-		GLfloat vVertices[] =
-		{
-			-1.0f, -1.0f,
-			0.0f, 1.0f,
-
-			1.0f, -1.0f,
-			1.0f, 1.0f,
-
-			1.0f, 1.0f,
-			1.0f, 0.0f,
-
-			-1.0f, 1.0f,
-			0.0f, 0.0f,
-		};
-		GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
-		device_ctx_t *dev = vs->device;
+		shader = vs->device->egl.yuvnv12_rgb;
 		
 		if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
 							dev->egl.surface, dev->egl.context)) {
@@ -248,12 +232,12 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 		glBindFramebuffer (GL_FRAMEBUFFER, vs->framebuffer);
 		CHECKEGL
 		
-		GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER) ;
+		status = glCheckFramebufferStatus(GL_FRAMEBUFFER) ;
 		if(status != GL_FRAMEBUFFER_COMPLETE) {
 			VDPAU_DBG("failed to make complete framebuffer object %x", status);
 		}
 
-		glUseProgram (vs->device->egl.yuvi420_rgb.program);
+		glUseProgram (shader.program);
 		CHECKEGL
 
 		glViewport(0, 0, vs->width, vs->height);
@@ -262,21 +246,21 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 		glClear (GL_COLOR_BUFFER_BIT);
 		CHECKEGL
 
-		glVertexAttribPointer (vs->device->egl.yuvi420_rgb.position_loc, 2,
+		glVertexAttribPointer (shader.position_loc, 2,
 							   GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
 							   vVertices);
 		CHECKEGL
-		glEnableVertexAttribArray (vs->device->egl.yuvi420_rgb.position_loc);
+		glEnableVertexAttribArray (shader.position_loc);
 		CHECKEGL
 
-		glVertexAttribPointer (vs->device->egl.yuvi420_rgb.texcoord_loc, 2,
+		glVertexAttribPointer (shader.texcoord_loc, 2,
 							   GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
 							   &vVertices[2]);
 		CHECKEGL
-		glEnableVertexAttribArray (vs->device->egl.yuvi420_rgb.texcoord_loc);
+		glEnableVertexAttribArray (shader.texcoord_loc);
 		CHECKEGL
 
-	    /* y component */
+		/* y component */
 		glActiveTexture(GL_TEXTURE0);
 		CHECKEGL
 		glBindTexture (GL_TEXTURE_2D, vs->y_tex);
@@ -285,7 +269,89 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 					 vs->height, 0, GL_LUMINANCE,
 					 GL_UNSIGNED_BYTE, source_data[0]);
 		CHECKEGL
-		glUniform1i (vs->device->egl.y_tex_loc, 0);
+		glUniform1i (shader.texture[0], 0);
+		CHECKEGL
+
+		/* uv component */
+		glActiveTexture(GL_TEXTURE1);
+		CHECKEGL
+		glBindTexture (GL_TEXTURE_2D, vs->u_tex);
+		CHECKEGL
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, vs->width/2,
+					 vs->height/2, 0, GL_LUMINANCE_ALPHA,
+					 GL_UNSIGNED_BYTE, source_data[1]);
+		CHECKEGL
+		glUniform1i (shader.texture[1], 1);
+		CHECKEGL
+
+		glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
+		CHECKEGL
+		
+		glUseProgram(0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		
+		if (!eglMakeCurrent(dev->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+			VDPAU_DBG ("Could not set EGL context to none %x", eglGetError());
+			return VDP_STATUS_RESOURCES;
+		}
+		break;
+	case VDP_YCBCR_FORMAT_YV12:
+		if (vs->chroma_type != VDP_CHROMA_TYPE_420)
+			return VDP_STATUS_INVALID_CHROMA_TYPE;
+			
+		if (vs->width != source_pitches[0]) {
+			VDPAU_DBG("YV12 %d, %d %d %d", vs->width, source_pitches[0], source_pitches[1], source_pitches[2]);
+		}
+		
+		shader = vs->device->egl.yuvi420_rgb;
+		
+		if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
+							dev->egl.surface, dev->egl.context)) {
+			VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());
+			return VDP_STATUS_RESOURCES;
+		}
+ 
+		glBindFramebuffer (GL_FRAMEBUFFER, vs->framebuffer);
+		CHECKEGL
+		
+		status = glCheckFramebufferStatus(GL_FRAMEBUFFER) ;
+		if(status != GL_FRAMEBUFFER_COMPLETE) {
+			VDPAU_DBG("failed to make complete framebuffer object %x", status);
+		}
+
+		glUseProgram (shader.program);
+		CHECKEGL
+
+		glViewport(0, 0, vs->width, vs->height);
+		CHECKEGL
+
+		glClear (GL_COLOR_BUFFER_BIT);
+		CHECKEGL
+
+		glVertexAttribPointer (shader.position_loc, 2,
+							   GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
+							   vVertices);
+		CHECKEGL
+		glEnableVertexAttribArray (shader.position_loc);
+		CHECKEGL
+
+		glVertexAttribPointer (shader.texcoord_loc, 2,
+							   GL_FLOAT, GL_FALSE, 4 * sizeof (GLfloat),
+							   &vVertices[2]);
+		CHECKEGL
+		glEnableVertexAttribArray (shader.texcoord_loc);
+		CHECKEGL
+
+		/* y component */
+		glActiveTexture(GL_TEXTURE0);
+		CHECKEGL
+		glBindTexture (GL_TEXTURE_2D, vs->y_tex);
+		CHECKEGL
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width,
+					 vs->height, 0, GL_LUMINANCE,
+					 GL_UNSIGNED_BYTE, source_data[0]);
+		CHECKEGL
+		glUniform1i (shader.texture[0], 0);
 		CHECKEGL
 
 		/* u component */
@@ -297,7 +363,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 					 vs->height/2, 0, GL_LUMINANCE,
 					 GL_UNSIGNED_BYTE, source_data[2]);
 		CHECKEGL
-		glUniform1i (vs->device->egl.u_tex_loc, 1);
+		glUniform1i (shader.texture[1], 1);
 		CHECKEGL
 
 		/* v component */
@@ -309,7 +375,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 					 vs->height/2, 0, GL_LUMINANCE,
 					 GL_UNSIGNED_BYTE, source_data[1]);
 		CHECKEGL
-		glUniform1i (vs->device->egl.v_tex_loc, 2);
+		glUniform1i (shader.texture[2], 2);
 		CHECKEGL
 
 		glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);

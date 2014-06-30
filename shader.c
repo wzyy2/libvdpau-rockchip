@@ -36,6 +36,26 @@ static const char* fragment_shaders[] = {
 	"  gl_FragColor=vec4(r,g,b,1.0);"
 	"}",
 	
+	/* NV12/NV21 to RGB conversion */
+	"precision mediump float;"
+	"varying vec2 vTexcoord;"
+	"uniform sampler2D s_ytex,s_uvtex;"
+	"const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
+	"const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
+	"const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
+	"const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
+	"void main(void) {"
+	"  float r,g,b;"
+	"  vec3 yuv;"
+	"  yuv.x=texture2D(s_ytex,vTexcoord).r;"
+	"  yuv.yz=texture2D(s_uvtex,vTexcoord).ra;"
+	"  yuv += offset;"
+	"  r = dot(yuv, rcoeff);"
+	"  g = dot(yuv, gcoeff);"
+	"  b = dot(yuv, bcoeff);"
+	"  gl_FragColor=vec4(r,g,b,1.0);"
+	"}",
+
 	/* COPY */
     "precision mediump float;"
 	"varying vec2 vTexcoord;"
@@ -183,6 +203,30 @@ gl_init_shader (GLESShader *shader,
     shader->position_loc = glGetAttribLocation(shader->program, "vPosition");
     shader->texcoord_loc = glGetAttribLocation(shader->program, "aTexcoord");
 
+	switch(process_type) {
+		case SHADER_YUVI420_RGB:
+			shader->texture[0] = glGetUniformLocation(shader->program, "s_ytex");
+			CHECKEGL
+			shader->texture[1] = glGetUniformLocation(shader->program, "s_utex");
+			CHECKEGL
+			shader->texture[2] = glGetUniformLocation(shader->program, "s_vtex");
+			CHECKEGL
+			break;
+		case SHADER_YUVNV12_RGB:
+			shader->texture[0] = glGetUniformLocation(shader->program, "s_ytex");
+			CHECKEGL
+			shader->texture[1] = glGetUniformLocation(shader->program, "s_uvtex");
+			CHECKEGL
+			break;
+		case SHADER_COPY:
+			shader->texture[0] = glGetUniformLocation(shader->program, "s_ytex");
+			CHECKEGL
+			break;
+		case SHADER_BRSWAP_COPY:
+			shader->texture[0] = glGetUniformLocation(shader->program, "s_ytex");
+			CHECKEGL
+			break;
+	}
     return 0;
 }
 

@@ -4,6 +4,7 @@
 typedef enum
 {
     SHADER_YUVI420_RGB = 0,
+    SHADER_YUVNV12_RGB,
     SHADER_COPY,
     SHADER_BRSWAP_COPY
 } GLESShaderTypes;
@@ -17,6 +18,8 @@ typedef struct
     /* standard locations, used in most shaders */
     GLint position_loc;
     GLint texcoord_loc;
+    
+    GLuint texture[3];
 } GLESShader;
 
 

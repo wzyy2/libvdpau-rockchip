@@ -286,7 +286,7 @@ void rgba_blit(rgba_surface_t *dest, const VdpRect *dest_rect, rgba_surface_t *s
 		return;
 	}
 	
-	while (--height) {
+	while (height--) {
 		DUFFS_LOOP4({
 			uint32_t dalpha;
 			uint32_t d;
