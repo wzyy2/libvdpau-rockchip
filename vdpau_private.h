@@ -31,9 +31,28 @@
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 
-#include "shader.h"
-
 #define INTERNAL_YCBCR_FORMAT (VdpYCbCrFormat)0xffff
+
+typedef enum
+{
+    SHADER_YUVI420_RGB = 0,
+    SHADER_YUVNV12_RGB,
+    SHADER_COPY,
+    SHADER_BRSWAP_COPY
+} GLESShaderTypes;
+
+typedef struct 
+{
+    GLuint program;
+    GLuint vertex_shader;
+    GLuint fragment_shader;
+
+    /* standard locations, used in most shaders */
+    GLint position_loc;
+    GLint texcoord_loc;
+    
+    GLuint texture[3];
+} GLESShader;
 
 typedef struct
 {
@@ -173,13 +192,16 @@ typedef struct
 
 #endif
 
-VdpStatus new_decoder_mpeg12(decoder_ctx_t *decoder);
-VdpStatus new_decoder_h264(decoder_ctx_t *decoder);
-VdpStatus new_decoder_mp4(decoder_ctx_t *decoder);
-
 int handle_create(void *data);
 void *handle_get(int handle);
 void handle_destroy(int handle);
+
+int gl_init_shader (GLESShader *shader, GLESShaderTypes process_type);
+void gl_delete_shader (GLESShader *shader);
+
+VdpStatus new_decoder_mpeg12(decoder_ctx_t *decoder);
+VdpStatus new_decoder_h264(decoder_ctx_t *decoder);
+VdpStatus new_decoder_mp4(decoder_ctx_t *decoder);
 
 VdpStatus vdp_imp_device_create_x11(Display *display, int screen, VdpDevice *device, VdpGetProcAddress **get_proc_address);
 VdpStatus vdp_device_destroy(VdpDevice device);
