@@ -17,9 +17,6 @@
  *
  */
 
-#include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include "vdpau_private.h"
 
 __attribute__((constructor))

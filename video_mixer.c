@@ -18,6 +18,7 @@
  */
 
 #include <math.h>
+
 #include "vdpau_private.h"
 #include "rgba.h"
 

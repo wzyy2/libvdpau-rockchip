@@ -1,8 +1,5 @@
 #include <string.h>
-#include <stdlib.h>
 #include <errno.h>
-
-#include <GLES2/gl2.h>
 
 #include "vdpau_private.h"
 

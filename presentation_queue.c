@@ -17,12 +17,9 @@
  *
  */
 
-#include "vdpau_private.h"
 #include <time.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/ioctl.h>
+
+#include "vdpau_private.h"
 #include "rgba.h"
 
 static uint64_t get_time(void)
@@ -350,7 +347,6 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
         glEnableVertexAttribArray (shader->texcoord_loc);
         CHECKEGL
 
-        CHECKEGL
         glActiveTexture(GL_TEXTURE0);
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, q->target->overlay);
@@ -377,10 +373,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     }
 
     eglSwapBuffers (q->device->egl.display, q->target->surface);
-    CHECKEGL
-
-    eglMakeCurrent(q->device->display, EGL_NO_SURFACE,
-        EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    eglMakeCurrent(q->device->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
     return VDP_STATUS_OK;
 }

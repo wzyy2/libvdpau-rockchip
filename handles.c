@@ -18,6 +18,7 @@
  */
 
 #include <string.h>
+
 #include "vdpau_private.h"
 
 #define INITIAL_SIZE 16

@@ -17,7 +17,6 @@
  *
  */
 
-#include <string.h>
 #include "vdpau_private.h"
 
 VdpStatus vdp_video_surface_create(VdpDevice device,
@@ -152,7 +151,6 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(VdpVideoSurface surface,
     video_surface_ctx_t *vs = handle_get(surface);
     if (!vs)
         return VDP_STATUS_INVALID_HANDLE;
-
 
     return VDP_STATUS_ERROR;
 }
