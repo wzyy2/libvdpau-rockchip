@@ -148,6 +148,20 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
         return VDP_STATUS_RESOURCES;
     }
 
+    ret = gl_init_shader (&dev->egl.yuv8444_rgb, SHADER_YUV8444_RGB);
+    if (ret < 0) {
+        VDPAU_DBG ("Could not initialize shader: %d", ret);
+        free(dev);
+        return VDP_STATUS_RESOURCES;
+    }
+
+    ret = gl_init_shader (&dev->egl.vuy8444_rgb, SHADER_VUY8444_RGB);
+    if (ret < 0) {
+        VDPAU_DBG ("Could not initialize shader: %d", ret);
+        free(dev);
+        return VDP_STATUS_RESOURCES;
+    }
+
     ret = gl_init_shader (&dev->egl.copy, SHADER_COPY);
     if (ret < 0) {
         VDPAU_DBG ("Could not initialize shader: %d", ret);

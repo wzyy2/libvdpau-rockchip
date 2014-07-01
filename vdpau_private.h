@@ -39,6 +39,8 @@ typedef enum
     SHADER_YUYV422_RGB,
     SHADER_UYVY422_RGB,
     SHADER_YUVNV12_RGB,
+    SHADER_YUV8444_RGB,
+    SHADER_VUY8444_RGB,
     SHADER_COPY,
     SHADER_BRSWAP_COPY
 } shader_type_t;
@@ -70,6 +72,8 @@ typedef struct
     shader_ctx_t yuyv422_rgb;
     shader_ctx_t uyvy422_rgb;
     shader_ctx_t yuvnv12_rgb;
+    shader_ctx_t yuv8444_rgb;
+    shader_ctx_t vuy8444_rgb;
     shader_ctx_t copy;
     shader_ctx_t brswap;
 } device_egl_t;

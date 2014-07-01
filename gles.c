@@ -117,6 +117,44 @@ static const char* fragment_shaders[] = {
     "  gl_FragColor=vec4(r,g,b,1.0);"
     "}",
 
+    /* YUV8 to RGB conversion */
+    "precision mediump float;"
+    "varying vec2 vTexcoord;"
+    "uniform sampler2D s_tex;"
+    "const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
+    "const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
+    "const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
+    "const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
+    "void main(void) {"
+    "  float r,g,b;"
+    "  vec3 yuv;"
+    "  yuv.xyz=texture2D(s_tex,vTexcoord).rgb;"
+    "  yuv += offset;"
+    "  r = dot(yuv, rcoeff);"
+    "  g = dot(yuv, gcoeff);"
+    "  b = dot(yuv, bcoeff);"
+    "  gl_FragColor=vec4(r,g,b,1.0);"
+    "}",
+
+    /* VUY8 to RGB conversion */
+    "precision mediump float;"
+    "varying vec2 vTexcoord;"
+    "uniform sampler2D s_tex;"
+    "const vec3 offset = vec3(-0.0625, -0.5, -0.5);"
+    "const vec3 rcoeff = vec3(1.164, 0.000, 1.596);"
+    "const vec3 gcoeff = vec3(1.164,-0.391,-0.813);"
+    "const vec3 bcoeff = vec3(1.164, 2.018, 0.000);"
+    "void main(void) {"
+    "  float r,g,b;"
+    "  vec3 yuv;"
+    "  yuv.xyz=texture2D(s_tex,vTexcoord).bgr;"
+    "  yuv += offset;"
+    "  r = dot(yuv, rcoeff);"
+    "  g = dot(yuv, gcoeff);"
+    "  b = dot(yuv, bcoeff);"
+    "  gl_FragColor=vec4(r,g,b,1.0);"
+    "}",
+
     /* COPY */
     "precision mediump float;"
     "varying vec2 vTexcoord;"
@@ -286,6 +324,8 @@ gl_init_shader (shader_ctx_t *shader,
             shader->stepX = glGetUniformLocation(shader->program, "stepX");
             CHECKEGL
             break;
+        case SHADER_YUV8444_RGB:
+        case SHADER_VUY8444_RGB:
         case SHADER_COPY:
         case SHADER_BRSWAP_COPY:
             shader->texture[0] = glGetUniformLocation(shader->program, "s_tex");

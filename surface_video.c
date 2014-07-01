@@ -259,7 +259,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 
         shader_init(vs, shader);
 
-        /* y component */
+        /* yuv component */
         glActiveTexture(GL_TEXTURE0);
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, vs->y_tex);
@@ -282,6 +282,31 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         if (vs->chroma_type != VDP_CHROMA_TYPE_444)
             return VDP_STATUS_INVALID_CHROMA_TYPE;
 
+        VDPAU_DBG("YUYV");
+        if (vs->width != source_pitches[0]) {
+            VDPAU_DBG("YUYV %d, %d", vs->width, source_pitches[0]);
+        }
+
+        if (source_ycbcr_format == VDP_YCBCR_FORMAT_Y8U8V8A8)
+            shader = &vs->device->egl.yuv8444_rgb;
+        else
+            shader = &vs->device->egl.vuy8444_rgb;
+
+        shader_init(vs, shader);
+
+        /* yuv component */
+        glActiveTexture(GL_TEXTURE0);
+        CHECKEGL
+        glBindTexture (GL_TEXTURE_2D, vs->y_tex);
+        CHECKEGL
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vs->width,
+                     vs->height, 0, GL_RGBA,
+                     GL_UNSIGNED_BYTE, source_data[0]);
+        CHECKEGL
+        glUniform1i (shader->texture[0], 0);
+        CHECKEGL
+
+        shader_draw(vs);
         break;
 
     case VDP_YCBCR_FORMAT_NV12:
