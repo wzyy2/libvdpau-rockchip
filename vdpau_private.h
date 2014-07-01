@@ -54,6 +54,9 @@ typedef struct
     /* standard locations, used in most shaders */
     GLint position_loc;
     GLint texcoord_loc;
+    GLint rcoeff_loc;
+    GLint gcoeff_loc;
+    GLint bcoeff_loc;
 
     /* Used in YUYV & UYUV shaders */
     GLint stepX;
