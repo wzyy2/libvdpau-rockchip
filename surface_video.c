@@ -173,16 +173,16 @@ static GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
 
 // BT.601, which is the standard for SDTV.
 static const GLfloat kColorConversion601[3][3] = {
-    {1.164,  0.0, 1.596},
+    {1.164,  0.0,    1.596},
     {1.164, -0.392, -0.813},
-    {1.164, 2.017, 0.0}
+    {1.164,  2.017,  0.0}
 };
 
 // BT.709, which is the standard for HDTV.
 static const GLfloat kColorConversion709[3][3] = {
-    {1.164,  0.0, 1.793},
+    {1.164,  0.0,    1.793},
     {1.164, -0.213, -0.533},
-    {1.164, 2.112, 0.0}
+    {1.164,  2.112,  0.0}
 };
 
 static void shader_init(video_surface_ctx_t *vs, shader_ctx_t *shader)
@@ -227,18 +227,18 @@ static void shader_init(video_surface_ctx_t *vs, shader_ctx_t *shader)
     CHECKEGL
 
     if(vs->height > 576) {
-        glUniform3fv(shader->rcoeff_loc, 3, kColorConversion709[0]);
+        glUniform3fv(shader->rcoeff_loc, 1, kColorConversion709[0]);
         CHECKEGL
-        glUniform3fv(shader->gcoeff_loc, 3, kColorConversion709[1]);
+        glUniform3fv(shader->gcoeff_loc, 1, kColorConversion709[1]);
         CHECKEGL
-        glUniform3fv(shader->bcoeff_loc, 3, kColorConversion709[2]);
+        glUniform3fv(shader->bcoeff_loc, 1, kColorConversion709[2]);
         CHECKEGL
     } else {
-        glUniform3fv(shader->rcoeff_loc, 3, kColorConversion601[0]);
+        glUniform3fv(shader->rcoeff_loc, 1, kColorConversion601[0]);
         CHECKEGL
-        glUniform3fv(shader->gcoeff_loc, 3, kColorConversion601[1]);
+        glUniform3fv(shader->gcoeff_loc, 1, kColorConversion601[1]);
         CHECKEGL
-        glUniform3fv(shader->bcoeff_loc, 3, kColorConversion601[2]);
+        glUniform3fv(shader->bcoeff_loc, 1, kColorConversion601[2]);
         CHECKEGL
     }
     CHECKEGL

@@ -303,9 +303,10 @@ gl_init_shader (shader_ctx_t *shader,
 
     shader->position_loc = glGetAttribLocation(shader->program, "vPosition");
     shader->texcoord_loc = glGetAttribLocation(shader->program, "aTexcoord");
-    shader->rcoeff_loc = glGetAttribLocation(shader->program, "rcoeff");
-    shader->gcoeff_loc = glGetAttribLocation(shader->program, "gcoeff");
-    shader->bcoeff_loc = glGetAttribLocation(shader->program, "bcoeff");
+    
+    shader->rcoeff_loc = glGetUniformLocation(shader->program, "rcoeff");
+    shader->gcoeff_loc = glGetUniformLocation(shader->program, "gcoeff");
+    shader->bcoeff_loc = glGetUniformLocation(shader->program, "bcoeff");
 
     switch(process_type) {
         case SHADER_YUVI420_RGB:
