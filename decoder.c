@@ -19,6 +19,13 @@
 
 #include <string.h>
 #include "vdpau_private.h"
+#include "h264_stream.h"
+
+static VdpStatus decode_h264(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
+                      VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
+
+static VdpStatus decode_mpeg(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
+                      VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
 
 VdpStatus vdp_decoder_create(VdpDevice device,
                              VdpDecoderProfile profile,
@@ -49,15 +56,18 @@ VdpStatus vdp_decoder_create(VdpDevice device,
     case VDP_DECODER_PROFILE_MPEG1:
     case VDP_DECODER_PROFILE_MPEG2_SIMPLE:
     case VDP_DECODER_PROFILE_MPEG2_MAIN:
+        dec->decode = decode_mpeg;
         break;
 
     case VDP_DECODER_PROFILE_H264_BASELINE:
     case VDP_DECODER_PROFILE_H264_MAIN:
     case VDP_DECODER_PROFILE_H264_HIGH:
+        dec->decode = decode_h264;
         break;
 
     case VDP_DECODER_PROFILE_MPEG4_PART2_SP:
     case VDP_DECODER_PROFILE_MPEG4_PART2_ASP:
+        dec->decode = decode_mpeg;
         break;
 
     default:
@@ -129,15 +139,40 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
         return VDP_STATUS_INVALID_HANDLE;
 
     vid->source_format = INTERNAL_YCBCR_FORMAT;
-    unsigned int i, pos = 0;
 
-    for (i = 0; i < bitstream_buffer_count; i++)
+    if (dec->decode)
+        return dec->decode(dec, picture_info, bitstream_buffer_count, bitstream_buffers, vid);
+
+    return VDP_STATUS_OK;
+}
+
+static VdpStatus decode_h264(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
+                      VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output) {
+    unsigned int i, len = 0;
+
+    FILE *f = fopen("vid.h264", "a+");
+    len = write_nal_unit(NAL_UNIT_TYPE_SPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header, sizeof(dec->header));
+    fwrite(dec->header, 1, len, f);
+    len = write_nal_unit(NAL_UNIT_TYPE_PPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header, sizeof(dec->header));
+    fwrite(dec->header, 1, len, f);
+    for (i = 0; i < buffer_count; i++)
     {
-        memcpy(dec->data + pos, bitstream_buffers[i].bitstream, bitstream_buffers[i].bitstream_bytes);
-        pos += bitstream_buffers[i].bitstream_bytes;
+        fwrite(buffers[i].bitstream, 1, buffers[i].bitstream_bytes, f);
     }
+    fclose(f);
+    return VDP_STATUS_OK;
+}
 
-//  return dec->decode(dec, picture_info, pos, vid);
+static VdpStatus decode_mpeg(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
+                      VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output) {
+    unsigned int i;
+
+    FILE *f = fopen("vid.mpeg", "a+");
+    for (i = 0; i < buffer_count; i++)
+    {
+        fwrite(buffers[i].bitstream, 1, buffers[i].bitstream_bytes, f);
+    }
+    fclose(f);
     return VDP_STATUS_OK;
 }
 
