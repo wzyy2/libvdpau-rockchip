@@ -91,7 +91,7 @@ typedef struct
     device_egl_t egl;
 } device_ctx_t;
 
-typedef struct video_surface_ctx_struct
+typedef struct
 {
     device_ctx_t *device;
     uint32_t width, height;
@@ -107,6 +107,9 @@ typedef struct video_surface_ctx_struct
     GLuint framebuffer;
 } video_surface_ctx_t;
 
+#define DEBUG_DECODE_DUMP (1 << 0)
+#define DEBUG_DECODE_RAW (1 << 1)
+
 typedef struct decoder_ctx_struct
 {
     uint32_t width, height;
@@ -116,9 +119,10 @@ typedef struct decoder_ctx_struct
     uint     header_len;
     uint8_t *last_header;
     uint     last_header_len;
+    uint32_t debug;
+
     VdpStatus (*decode)(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
                         VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
-
 } decoder_ctx_t;
 
 typedef struct

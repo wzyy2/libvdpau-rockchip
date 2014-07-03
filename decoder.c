@@ -18,13 +18,15 @@
  */
 
 #include <string.h>
+#include <unistd.h>
+
 #include "vdpau_private.h"
 #include "h264_stream.h"
 
 static VdpStatus decode_h264(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
                       VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
 
-static VdpStatus decode_mpeg(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
+static VdpStatus decode_raw(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
                       VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
 
 VdpStatus vdp_decoder_create(VdpDevice device,
@@ -56,7 +58,7 @@ VdpStatus vdp_decoder_create(VdpDevice device,
     case VDP_DECODER_PROFILE_MPEG1:
     case VDP_DECODER_PROFILE_MPEG2_SIMPLE:
     case VDP_DECODER_PROFILE_MPEG2_MAIN:
-        dec->decode = decode_mpeg;
+        dec->decode = decode_raw;
         break;
 
     case VDP_DECODER_PROFILE_H264_BASELINE:
@@ -67,12 +69,22 @@ VdpStatus vdp_decoder_create(VdpDevice device,
 
     case VDP_DECODER_PROFILE_MPEG4_PART2_SP:
     case VDP_DECODER_PROFILE_MPEG4_PART2_ASP:
-        dec->decode = decode_mpeg;
+        dec->decode = decode_raw;
         break;
 
     default:
         ret = VDP_STATUS_INVALID_DECODER_PROFILE;
         break;
+    }
+
+    char *debug = getenv("VDPAU_DEBUG");
+    if (debug) {
+        if (strstr(debug, "dump"))
+            dec->debug |= DEBUG_DECODE_DUMP;
+        if (strstr(debug, "raw")) {
+            dec->debug |= DEBUG_DECODE_RAW;
+            truncate("vid.raw", 0);
+        }
     }
 
     if (ret != VDP_STATUS_OK)
@@ -151,41 +163,51 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
 
 static VdpStatus decode_h264(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
                       VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output) {
-    unsigned int i, len = 0;
-
     if (dec->header == NULL)
         dec->header = calloc(256, 1);
-    len = write_nal_unit(NAL_UNIT_TYPE_SPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header, 256);
-    len += write_nal_unit(NAL_UNIT_TYPE_PPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header + len, 256 - len);
-    dec->header_len = len;
+    dec->header_len = write_nal_unit(NAL_UNIT_TYPE_SPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header, 256);
+    dec->header_len += write_nal_unit(NAL_UNIT_TYPE_PPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header + dec->header_len, 256 - dec->header_len);
 
-    FILE *f = fopen("vid.h264", "a+");
     if (dec->last_header == NULL || dec->header_len != dec->last_header_len || memcmp(dec->last_header, dec->header, dec->header_len)) {
+        VdpBitstreamBuffer buffer;
+        buffer.struct_version = VDP_BITSTREAM_BUFFER_VERSION;
+        buffer.bitstream = dec->header;
+        buffer.bitstream_bytes = dec->header_len;
+        decode_raw(dec, info, 1, &buffer, output);
+
         if (dec->last_header)
             free(dec->last_header);
-        fwrite(dec->header, 1, dec->header_len, f);
         dec->last_header = dec->header;
         dec->header = NULL;
         dec->last_header_len = dec->header_len;
     }
-    for (i = 0; i < buffer_count; i++)
-    {
-        fwrite(buffers[i].bitstream, 1, buffers[i].bitstream_bytes, f);
-    }
-    fclose(f);
+    decode_raw(dec, info, buffer_count, buffers, output);
     return VDP_STATUS_OK;
 }
 
-static VdpStatus decode_mpeg(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
+static VdpStatus decode_raw(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
                       VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output) {
     unsigned int i;
 
-    FILE *f = fopen("vid.mpeg", "a+");
-    for (i = 0; i < buffer_count; i++)
-    {
-        fwrite(buffers[i].bitstream, 1, buffers[i].bitstream_bytes, f);
+    if (dec->debug & DEBUG_DECODE_DUMP) {
+        for (i = 0; i < buffer_count; i++) {
+            static char buf[256];
+            int j;
+            for (j=0 ; j<(buffers[i].bitstream_bytes < 16 ? buffers[i].bitstream_bytes : 16) ; j++) {
+                snprintf(buf + j*3, 256, "%02x ", ((uint8_t*)buffers[i].bitstream)[j]);
+            }
+            VDPAU_DBG("%3d %8d: %s", i, buffers[i].bitstream_bytes, buf);
+        }
     }
-    fclose(f);
+
+    if (dec->debug & DEBUG_DECODE_RAW) {
+        FILE *f = fopen("vid.raw", "a+");
+        for (i = 0; i < buffer_count; i++)
+        {
+            fwrite(buffers[i].bitstream, 1, buffers[i].bitstream_bytes, f);
+        }
+        fclose(f);
+    }
     return VDP_STATUS_OK;
 }
 
