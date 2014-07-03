@@ -19,6 +19,7 @@
 
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "vdpau_private.h"
 #include "h264_stream.h"
@@ -83,7 +84,11 @@ VdpStatus vdp_decoder_create(VdpDevice device,
             dec->debug |= DEBUG_DECODE_DUMP;
         if (strstr(debug, "raw")) {
             dec->debug |= DEBUG_DECODE_RAW;
-            truncate("vid.raw", 0);
+            if(truncate("vid.raw", 0)) {
+                if (errno != ENOENT) {
+                    goto err_data;
+                }
+            }
         }
     }
 
