@@ -21,4 +21,4 @@ This environment variable if set specifices debugging output options
 it is specified as a comma seperated list of options. The options are as follows.
 	
 * `dump` the first 16 bytes of the data that will be passed to the MFC decoder is printed in HEX
-* `raw` the raw bytes that will be passed to the MFC decoder to the file `vid.raw`
+* `raw` the raw bytes that will be passed to the MFC decoder are written to the file `vid.raw`
