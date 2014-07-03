@@ -112,7 +112,10 @@ typedef struct decoder_ctx_struct
     uint32_t width, height;
     VdpDecoderProfile profile;
     device_ctx_t *device;
-    uint8_t header[256];
+    uint8_t *header;
+    uint     header_len;
+    uint8_t *last_header;
+    uint     last_header_len;
     VdpStatus (*decode)(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
                         VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
 

@@ -97,6 +97,9 @@ VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
     if (!dec)
         return VDP_STATUS_INVALID_HANDLE;
 
+    free(dec->header);
+    free(dec->last_header);
+
     handle_destroy(decoder);
     free(dec);
 
@@ -150,11 +153,21 @@ static VdpStatus decode_h264(struct decoder_ctx_struct *dec, VdpPictureInfo cons
                       VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output) {
     unsigned int i, len = 0;
 
+    if (dec->header == NULL)
+        dec->header = calloc(256, 1);
+    len = write_nal_unit(NAL_UNIT_TYPE_SPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header, 256);
+    len += write_nal_unit(NAL_UNIT_TYPE_PPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header + len, 256 - len);
+    dec->header_len = len;
+
     FILE *f = fopen("vid.h264", "a+");
-    len = write_nal_unit(NAL_UNIT_TYPE_SPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header, sizeof(dec->header));
-    fwrite(dec->header, 1, len, f);
-    len = write_nal_unit(NAL_UNIT_TYPE_PPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header, sizeof(dec->header));
-    fwrite(dec->header, 1, len, f);
+    if (dec->last_header == NULL || dec->header_len != dec->last_header_len || memcmp(dec->last_header, dec->header, dec->header_len)) {
+        if (dec->last_header)
+            free(dec->last_header);
+        fwrite(dec->header, 1, dec->header_len, f);
+        dec->last_header = dec->header;
+        dec->header = NULL;
+        dec->last_header_len = dec->header_len;
+    }
     for (i = 0; i < buffer_count; i++)
     {
         fwrite(buffers[i].bitstream, 1, buffers[i].bitstream_bytes, f);
