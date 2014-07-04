@@ -123,6 +123,8 @@ typedef struct decoder_ctx_struct
 
     VdpStatus (*decode)(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
                         VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
+
+    void *private;
 } decoder_ctx_t;
 
 typedef struct
@@ -215,6 +217,13 @@ typedef struct
 
 #endif
 
+/* HW Specific decoder methods */
+void *decoder_open(VdpDecoderProfile profile);
+void decoder_close(void *private);
+VdpStatus decoder_decode(void *private, uint32_t buffer_count,
+                    VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
+
+
 int handle_create(void *data);
 void *handle_get(int handle);
 void handle_destroy(int handle);
@@ -222,10 +231,6 @@ void handle_destroy(int handle);
 int gl_init_shader (shader_ctx_t *shader, shader_type_t process_type);
 void gl_delete_shader (shader_ctx_t *shader);
 GLuint gl_create_texture(GLuint tex_filter);
-
-VdpStatus new_decoder_mpeg12(decoder_ctx_t *decoder);
-VdpStatus new_decoder_h264(decoder_ctx_t *decoder);
-VdpStatus new_decoder_mp4(decoder_ctx_t *decoder);
 
 VdpStatus vdp_imp_device_create_x11(Display *display, int screen, VdpDevice *device, VdpGetProcAddress **get_proc_address);
 VdpStatus vdp_device_destroy(VdpDevice device);
@@ -236,7 +241,6 @@ VdpStatus vdp_get_proc_address(VdpDevice device, VdpFuncId function_id, void **f
 char const *vdp_get_error_string(VdpStatus status);
 VdpStatus vdp_get_api_version(uint32_t *api_version);
 VdpStatus vdp_get_information_string(char const **information_string);
-
 
 VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device, Drawable drawable, VdpPresentationQueueTarget *target);
 VdpStatus vdp_presentation_queue_target_destroy(VdpPresentationQueueTarget presentation_queue_target);

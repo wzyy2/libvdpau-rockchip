@@ -99,6 +99,8 @@ VdpStatus vdp_decoder_create(VdpDevice device,
     if (handle == -1)
         goto err_data;
 
+    dec->private = decoder_open(profile);
+
     *decoder = handle;
     return VDP_STATUS_OK;
 
@@ -113,6 +115,8 @@ VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
     decoder_ctx_t *dec = handle_get(decoder);
     if (!dec)
         return VDP_STATUS_INVALID_HANDLE;
+
+    decoder_close(dec->private);
 
     free(dec->header);
     free(dec->last_header);
@@ -186,8 +190,7 @@ static VdpStatus decode_h264(struct decoder_ctx_struct *dec, VdpPictureInfo cons
         dec->header = NULL;
         dec->last_header_len = dec->header_len;
     }
-    decode_raw(dec, info, buffer_count, buffers, output);
-    return VDP_STATUS_OK;
+    return decode_raw(dec, info, buffer_count, buffers, output);
 }
 
 static VdpStatus decode_raw(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
@@ -213,7 +216,8 @@ static VdpStatus decode_raw(struct decoder_ctx_struct *dec, VdpPictureInfo const
         }
         fclose(f);
     }
-    return VDP_STATUS_OK;
+
+    return decoder_decode(dec->private, buffer_count, buffers, output);
 }
 
 VdpStatus vdp_decoder_query_capabilities(VdpDevice device,

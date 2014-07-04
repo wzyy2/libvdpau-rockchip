@@ -24,7 +24,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "bs.h"
 #include "h264_stream.h"
 
 FILE* h264_dbgfile = NULL;
