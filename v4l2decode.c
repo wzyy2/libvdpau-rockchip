@@ -97,7 +97,7 @@ void *decoder_open(VdpDecoderProfile profile)
     fmt.fmt.pix_mp.plane_fmt[0].sizeimage = STREAM_BUFFER_SIZE;
     fmt.fmt.pix_mp.num_planes = 1;
     if (ioctl(ctx->decoderHandle, VIDIOC_S_FMT, &fmt)) {
-        VDPAU_DBG("Failed to setup for MFC decoding");
+        VDPAU_ERR("Failed to setup for MFC decoding");
         cleanup(ctx);
         return NULL;
     }
@@ -106,7 +106,7 @@ void *decoder_open(VdpDecoderProfile profile)
     memzero(fmt);
     fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
     if (ioctl(ctx->decoderHandle, VIDIOC_G_FMT, &fmt)) {
-        VDPAU_DBG("Get Format failed");
+        VDPAU_ERR("Get Format failed");
         cleanup(ctx);
         return NULL;
     }
@@ -115,7 +115,7 @@ void *decoder_open(VdpDecoderProfile profile)
     // Request mfc output buffers
     ctx->outputBuffersCount = RequestBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, STREAM_BUFFER_CNT);
     if (ctx->outputBuffersCount == V4L2_ERROR) {
-        VDPAU_DBG("REQBUFS failed on queue of MFC");
+        VDPAU_ERR("REQBUFS failed on queue of MFC");
         cleanup(ctx);
         return NULL;
     }
@@ -124,12 +124,12 @@ void *decoder_open(VdpDecoderProfile profile)
     // Memory Map mfc output buffers
     ctx->outputBuffers = (v4l2_buffer_t *)calloc(ctx->outputBuffersCount, sizeof(v4l2_buffer_t));
     if(!ctx->outputBuffers) {
-        VDPAU_DBG("cannot allocate buffers\n");
+        VDPAU_ERR("cannot allocate buffers\n");
         cleanup(ctx);
         return NULL;
     }
     if(!MmapBuffers(ctx->decoderHandle, ctx->outputBuffersCount, ctx->outputBuffers, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, FALSE)) {
-        VDPAU_DBG("cannot mmap output buffers\n");
+        VDPAU_ERR("cannot mmap output buffers\n");
         cleanup(ctx);
         return NULL;
     }
@@ -147,19 +147,44 @@ void decoder_close(void *private)
     free(ctx);
 }
 
+static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
+                    VdpBitstreamBuffer const *buffers);
+
+static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
+                    VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
+
+VdpStatus decoder_decode(void *private, uint32_t buffer_count,
+                    VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output)
+{
+    v4l2_decoder_t *ctx = (v4l2_decoder_t*)private;
+
+    if (!ctx->headerProcessed) {
+        int ret = process_header(ctx, buffer_count, buffers);
+        if(ret)
+            return ret < 0 ? VDP_STATUS_ERROR : VDP_STATUS_OK;
+        if (ctx->codec == V4L2_PIX_FMT_H263)
+            return process_frames(ctx, buffer_count, buffers, output);
+        return VDP_STATUS_OK;
+    }
+
+    return process_frames(ctx, buffer_count, buffers, output);
+}
+
+
+
+
 static void listFormats(v4l2_decoder_t *ctx)
 {
     // we enumerate all the supported formats looking for NV12MT and NV12
     int index = 0;
-    int ret   = -1;
     while (1) {
         struct v4l2_fmtdesc vid_fmtdesc = {};
         vid_fmtdesc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
         vid_fmtdesc.index = index++;
 
-        ret = ioctl(ctx->decoderHandle, VIDIOC_ENUM_FMT, &vid_fmtdesc);
-        if (ret != 0)
+        if (ioctl(ctx->decoderHandle, VIDIOC_ENUM_FMT, &vid_fmtdesc))
             break;
+
         VDPAU_DBG("Decoder format %d: %c%c%c%c (%s)", vid_fmtdesc.index,
             vid_fmtdesc.pixelformat & 0xFF, (vid_fmtdesc.pixelformat >> 8) & 0xFF,
             (vid_fmtdesc.pixelformat >> 16) & 0xFF, (vid_fmtdesc.pixelformat >> 24) & 0xFF,
@@ -236,7 +261,7 @@ static void openDevices(v4l2_decoder_t *ctx)
         }
         closedir (dir);
     }
-  return;
+    return;
 }
 
 static void cleanup(v4l2_decoder_t *ctx)
@@ -246,37 +271,16 @@ static void cleanup(v4l2_decoder_t *ctx)
         ctx->outputBuffers = FreeBuffers(ctx->outputBuffersCount, ctx->outputBuffers);
     if (ctx->captureBuffers)
         ctx->captureBuffers = FreeBuffers(ctx->captureBuffersCount, ctx->captureBuffers);
+
     VDPAU_DBG("Devices cleanup");
     if (StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, VIDIOC_STREAMOFF))
-        VDPAU_DBG("Stream OFF");
+        VDPAU_ERR("Stream OFF");
     if (StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, VIDIOC_STREAMOFF))
-        VDPAU_DBG("Stream OFF");
+        VDPAU_ERR("Stream OFF");
+
     VDPAU_DBG("Closing devices");
     if (ctx->decoderHandle >= 0)
         close(ctx->decoderHandle);
-}
-
-static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
-                    VdpBitstreamBuffer const *buffers);
-
-static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
-                    VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
-
-VdpStatus decoder_decode(void *private, uint32_t buffer_count,
-                    VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output)
-{
-    v4l2_decoder_t *ctx = (v4l2_decoder_t*)private;
-
-    if (!ctx->headerProcessed) {
-        int ret = process_header(ctx, buffer_count, buffers);
-        if(ret)
-            return ret < 0 ? VDP_STATUS_ERROR : VDP_STATUS_OK;
-        if (ctx->codec == V4L2_PIX_FMT_H263)
-            return process_frames(ctx, buffer_count, buffers, output);
-        return VDP_STATUS_OK;
-    }
-
-    return process_frames(ctx, buffer_count, buffers, output);
 }
 
 static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
@@ -304,26 +308,25 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     // Queue header to mfc output
     ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, ctx->outputBuffers[0].iNumPlanes, 0, &ctx->outputBuffers[0]);
     if (ret == V4L2_ERROR) {
-        VDPAU_DBG("queue input buffer");
+        VDPAU_ERR("queue input buffer");
         return -1;
     }
     ctx->outputBuffers[ret].bQueue = TRUE;
     VDPAU_DBG("<- %d header of size %d", ret, size);
 
     // STREAMON on mfc OUTPUT
-    if (StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, VIDIOC_STREAMON))
-        VDPAU_DBG("Stream ON");
-    else {
-        VDPAU_DBG("Failed to Stream ON");
+    if (!StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, VIDIOC_STREAMON)) {
+        VDPAU_ERR("Failed to Stream ON");
         return -1;
     }
+    VDPAU_DBG("Stream ON");
 
     // Setup mfc capture
     // Get mfc capture picture format
     memzero(fmt);
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
     if (ioctl(ctx->decoderHandle, VIDIOC_G_FMT, &fmt)) {
-        VDPAU_DBG("Failed to get format from");
+        VDPAU_ERR("Failed to get format from");
         return -1;
     }
     capturePlane1Size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
@@ -334,7 +337,7 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     // Get mfc needed number of buffers
     ctrl.id = V4L2_CID_MIN_BUFFERS_FOR_CAPTURE;
     if (ioctl(ctx->decoderHandle, VIDIOC_G_CTRL, &ctrl)) {
-        VDPAU_DBG("Failed to get the number of buffers required");
+        VDPAU_ERR("Failed to get the number of buffers required");
         return -1;
     }
     ctx->captureBuffersCount = ctrl.value + CAPTURE_EXTRA_BUFFER_CNT;
@@ -343,7 +346,7 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     memzero(crop);
     crop.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
     if (ioctl(ctx->decoderHandle, VIDIOC_G_CROP, &crop)) {
-        VDPAU_DBG("Failed to get crop information");
+        VDPAU_ERR("Failed to get crop information");
         return -1;
     }
     VDPAU_DBG("G_CROP %dx%d", crop.c.width, crop.c.height);
@@ -353,7 +356,7 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     // Request mfc capture buffers
     ctx->captureBuffersCount = RequestBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, ctx->captureBuffersCount);
     if (ctx->captureBuffersCount == V4L2_ERROR) {
-        VDPAU_DBG("REQBUFS failed");
+        VDPAU_ERR("REQBUFS failed");
         return -1;
     }
     VDPAU_DBG("REQBUFS Number of buffers is %d (extra %d)", ctx->captureBuffersCount, CAPTURE_EXTRA_BUFFER_CNT);
@@ -361,7 +364,7 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     // Memory Map and queue mfc capture buffers
     ctx->captureBuffers = (v4l2_buffer_t *)calloc(ctx->captureBuffersCount, sizeof(v4l2_buffer_t));
     if(!ctx->captureBuffers) {
-        VDPAU_DBG("cannot allocate buffers");
+        VDPAU_ERR("cannot allocate buffers");
         return -1;
     }
     if(!MmapBuffers(ctx->decoderHandle, ctx->captureBuffersCount, ctx->captureBuffers, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, TRUE)) {
@@ -371,25 +374,27 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     for (i = 0; i < ctx->captureBuffersCount; i++) {
         ctx->captureBuffers[i].iBytesUsed[0] = capturePlane1Size;
         ctx->captureBuffers[i].iBytesUsed[1] = capturePlane2Size;
+        ctx->captureBuffers[i].iBytesUsed[2] = capturePlane3Size;
         ctx->captureBuffers[i].bQueue = TRUE;
     }
     VDPAU_DBG("Succesfully mmapped and queued %d buffers", ctx->captureBuffersCount);
 
     // STREAMON on mfc CAPTURE
-    if (StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, VIDIOC_STREAMON))
-        VDPAU_DBG("Stream ON");
-    else
-        VDPAU_DBG("Failed to Stream ON");
+    if (!StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, VIDIOC_STREAMON)) {
+        VDPAU_ERR("Failed to Stream ON");
+        return -1;
+    }
+    VDPAU_DBG("Stream ON");
 
     // Dequeue header on input queue
     ret = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, V4L2_NUM_MAX_PLANES);
     if (ret < 0) {
-        VDPAU_DBG("error dequeue output buffer, got number %d, errno %d", ret, errno);
+        VDPAU_ERR("error dequeue output buffer, got number %d, errno %d", ret, errno);
         return -1;
-    } else {
-        VDPAU_DBG("-> %d header", ret);
-        ctx->outputBuffers[ret].bQueue = FALSE;
     }
+    VDPAU_DBG("-> %d header", ret);
+
+    ctx->outputBuffers[ret].bQueue = FALSE;
     ctx->headerProcessed = TRUE;
     return 0;
 }
@@ -410,19 +415,18 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
     if (index >= ctx->outputBuffersCount) { //all input buffers are busy, dequeue needed
         ret = PollOutput(ctx->decoderHandle, 1000); // POLLIN - Poll Capture, POLLOUT - Poll Output
         if (ret == V4L2_ERROR) {
-            VDPAU_DBG("PollInput Error");
+            VDPAU_ERR("PollInput Error");
             return VDP_STATUS_ERROR;
         } else if (ret == V4L2_READY) {
             index = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, V4L2_NUM_MAX_PLANES);
             if (index < 0) {
-                VDPAU_DBG("error dequeue output buffer, got number %d, errno %d", index, errno);
+                VDPAU_ERR("error dequeue output buffer, got number %d, errno %d", index, errno);
                 return VDP_STATUS_ERROR;
-            } else {
-                VDPAU_DBG("-> %d", index);
-                ctx->outputBuffers[index].bQueue = FALSE;
             }
+            ctx->outputBuffers[index].bQueue = FALSE;
+            VDPAU_DBG("-> %d", index);
         } else {
-            VDPAU_DBG("What the? %d", ret);
+            VDPAU_ERR("PollOutput unexpected error, what the? %d", ret);
             return VDP_STATUS_ERROR;
         }
     }
@@ -430,22 +434,19 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
     // Parse frame, copy it to buffer
     int frameSize = 0;
     ret = parse_stream(ctx->parser, ctx->outputBuffers[index].cPlane[0], STREAM_BUFFER_SIZE, &frameSize, FALSE);
-    if (ret == 0)
-        return VDP_STATUS_OK;
-    if (ret < 0)
-        return VDP_STATUS_ERROR;
-    VDPAU_DBG("Extracted frame of size %d", frameSize);
+    if (ret <= 0)
+        return ret ? VDP_STATUS_ERROR : VDP_STATUS_OK;
     ctx->outputBuffers[index].iBytesUsed[0] = frameSize;
+    VDPAU_DBG("Extracted frame of size %d", frameSize);
 
     // Queue buffer into input queue
     ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, ctx->outputBuffers[index].iNumPlanes, index, &ctx->outputBuffers[index]);
     if (ret == V4L2_ERROR) {
-        VDPAU_DBG("Failed to queue buffer with index %d, errno %d", index, errno);
+        VDPAU_ERR("Failed to queue buffer with index %d, errno %d", index, errno);
         return VDP_STATUS_ERROR;
-    } else {
-        ctx->outputBuffers[index].bQueue = TRUE;
-        VDPAU_DBG("%d <-", index);
     }
+    ctx->outputBuffers[index].bQueue = TRUE;
+    VDPAU_DBG("%d <-", index);
 
     index = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, V4L2_NUM_MAX_PLANES);
     if (index < 0) {
@@ -453,23 +454,21 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
             VDPAU_DBG("again...");
             return VDP_STATUS_OK;
         }
-        VDPAU_DBG("error dequeue output buffer, got number %d", index);
+        VDPAU_ERR("error dequeue output buffer, got number %d", index);
         return VDP_STATUS_ERROR;
-    } else {
-        VDPAU_DBG("-> %d", index);
-        ctx->captureBuffers[index].bQueue = FALSE;
     }
+    ctx->captureBuffers[index].bQueue = FALSE;
+    VDPAU_DBG("-> %d", index);
 
     // TODO send to video surface
 
     ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, ctx->captureBuffers[index].iNumPlanes, index, &ctx->captureBuffers[index]);
     if (ret == V4L2_ERROR) {
-        VDPAU_DBG("Failed to queue buffer with index %d, errno = %d", index, errno);
+        VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", index, errno);
         return VDP_STATUS_ERROR;
-    } else {
-        VDPAU_DBG("<- %d", ret);
-        ctx->captureBuffers[ret].bQueue = TRUE;
     }
+    ctx->captureBuffers[ret].bQueue = TRUE;
+    VDPAU_DBG("<- %d", ret);
 
     return VDP_STATUS_OK;
 }

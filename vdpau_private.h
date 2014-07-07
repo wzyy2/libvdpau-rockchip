@@ -24,6 +24,7 @@
 #define MAX_HANDLES 64
 #define VBV_SIZE (1 * 1024 * 1024)
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <vdpau/vdpau.h>
 #include <X11/Xlib.h>
@@ -204,11 +205,12 @@ typedef struct
            __typeof__ (b) _b = (b); \
            _a < _b ? (_a == 0 ? _b : _a) : (_b == 0 ? _a : _b); })
 
+#define VDPAU_ERR(format, ...) fprintf(stderr, "\e[1;31m[VDPAU ODROID ERROR %s:%d]\e[0m " format "\n", __FILE__, __LINE__,  ##__VA_ARGS__)
+
 #ifdef DEBUG
-#include <stdio.h>
-#define VDPAU_DBG(format, ...) fprintf(stderr, "[VDPAU ODROID %s:%d] " format "\n", __FILE__, __LINE__,  ##__VA_ARGS__)
-#define VDPAU_DBG_ONCE(format, ...) do { static uint8_t __once; if (!__once) { fprintf(stderr, "[VDPAU ODROID] " format "\n", ##__VA_ARGS__); __once = 1; } } while(0)
-#define CHECKEGL { int e=glGetError(); if (e) fprintf(stderr, "[VDPAU ODROID] ERROR %d(0x%x) at %s:%d\n", e, e, __FILE__, __LINE__);}
+#define VDPAU_DBG(format, ...) fprintf(stderr, "\e[1;32m[VDPAU ODROID %s:%d]\e[0m " format "\n", __FILE__, __LINE__,  ##__VA_ARGS__)
+#define VDPAU_DBG_ONCE(format, ...) do { static uint8_t __once; if (!__once) { fprintf(stderr, "\e[1;32m[VDPAU ODROID]\e[0m " format "\n", ##__VA_ARGS__); __once = 1; } } while(0)
+#define CHECKEGL { int e=glGetError(); if (e) fprintf(stderr, "\e[1;31m[VDPAU ODROID ERROR %s:%d]\e[0m %d(0x%x)\n", __FILE__, __LINE__, e, e);}
 
 #else
 #define VDPAU_DBG(format, ...)
