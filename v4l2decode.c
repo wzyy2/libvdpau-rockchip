@@ -322,6 +322,13 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     VDPAU_DBG("Stream ON");
 
     // Setup mfc capture
+    memzero(fmt);
+    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12M;
+    if(ioctl(ctx->decoderHandle, VIDIOC_S_FMT, &fmt)) {
+        VDPAU_ERR("Failed to set capture format");
+    }
+
     // Get mfc capture picture format
     memzero(fmt);
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
@@ -332,7 +339,10 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     capturePlane1Size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
     capturePlane2Size = fmt.fmt.pix_mp.plane_fmt[1].sizeimage;
     capturePlane3Size = fmt.fmt.pix_mp.plane_fmt[2].sizeimage;
-    VDPAU_DBG("G_FMT: fmt (%dx%d), plane[0]=%d plane[1]=%d plane[2]=%d", fmt.fmt.pix_mp.width, fmt.fmt.pix_mp.height, capturePlane1Size, capturePlane2Size, capturePlane3Size);
+    VDPAU_DBG("G_FMT: fmt (%dx%d), %c%c%c%c plane[0]=%d plane[1]=%d plane[2]=%d", fmt.fmt.pix_mp.width, fmt.fmt.pix_mp.height,
+                        fmt.fmt.pix_mp.pixelformat & 0xFF, (fmt.fmt.pix_mp.pixelformat >> 8) & 0xFF,
+                        (fmt.fmt.pix_mp.pixelformat >> 16) & 0xFF, (fmt.fmt.pix_mp.pixelformat >> 24) & 0xFF,
+                        capturePlane1Size, capturePlane2Size, capturePlane3Size);
 
     // Get mfc needed number of buffers
     ctrl.id = V4L2_CID_MIN_BUFFERS_FOR_CAPTURE;
