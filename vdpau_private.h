@@ -220,7 +220,7 @@ typedef struct
 #endif
 
 /* HW Specific decoder methods */
-void *decoder_open(VdpDecoderProfile profile);
+void *decoder_open(VdpDecoderProfile profile, uint32_t width, uint32_t height);
 void decoder_close(void *private);
 VdpStatus decoder_decode(void *private, uint32_t buffer_count,
                     VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);

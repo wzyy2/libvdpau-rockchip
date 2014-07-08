@@ -99,7 +99,7 @@ VdpStatus vdp_decoder_create(VdpDevice device,
     if (handle == -1)
         goto err_data;
 
-    dec->private = decoder_open(profile);
+    dec->private = decoder_open(profile, width, height);
 
     *decoder = handle;
     return VDP_STATUS_OK;
