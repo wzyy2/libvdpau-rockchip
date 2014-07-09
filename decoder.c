@@ -25,10 +25,10 @@
 #include "h264_stream.h"
 
 static VdpStatus decode_h264(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
-                      VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
+                      VdpBitstreamBuffer const *buffers, VdpVideoSurface output);
 
 static VdpStatus decode_raw(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
-                      VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
+                      VdpBitstreamBuffer const *buffers, VdpVideoSurface output);
 
 VdpStatus vdp_decoder_create(VdpDevice device,
                              VdpDecoderProfile profile,
@@ -165,13 +165,13 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
     vid->source_format = INTERNAL_YCBCR_FORMAT;
 
     if (dec->decode)
-        return dec->decode(dec, picture_info, bitstream_buffer_count, bitstream_buffers, vid);
+        return dec->decode(dec, picture_info, bitstream_buffer_count, bitstream_buffers, target);
 
     return VDP_STATUS_OK;
 }
 
 static VdpStatus decode_h264(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
-                      VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output) {
+                      VdpBitstreamBuffer const *buffers, VdpVideoSurface output) {
     if (dec->header == NULL)
         dec->header = calloc(256, 1);
     dec->header_len = write_nal_unit(NAL_UNIT_TYPE_SPS, dec->width, dec->height, dec->profile, (VdpPictureInfoH264*)info, dec->header, 256);
@@ -194,7 +194,7 @@ static VdpStatus decode_h264(struct decoder_ctx_struct *dec, VdpPictureInfo cons
 }
 
 static VdpStatus decode_raw(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
-                      VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output) {
+                      VdpBitstreamBuffer const *buffers, VdpVideoSurface output) {
     unsigned int i;
 
     if (dec->debug & DEBUG_DECODE_DUMP) {

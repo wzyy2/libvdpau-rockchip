@@ -380,6 +380,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         break;
 
     case VDP_YCBCR_FORMAT_YV12:
+    case INTERNAL_YCBCR_FORMAT:
         if (vs->chroma_type != VDP_CHROMA_TYPE_420)
             return VDP_STATUS_INVALID_CHROMA_TYPE;
 
@@ -409,7 +410,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         CHECKEGL
         glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width/2,
                      vs->height/2, 0, GL_LUMINANCE,
-                     GL_UNSIGNED_BYTE, source_data[2]);
+                     GL_UNSIGNED_BYTE, source_data[source_ycbcr_format == INTERNAL_YCBCR_FORMAT ? 1 : 2]);
         CHECKEGL
         glUniform1i (shader->texture[1], 1);
         CHECKEGL
@@ -421,7 +422,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         CHECKEGL
         glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width/2,
                      vs->height/2, 0, GL_LUMINANCE,
-                     GL_UNSIGNED_BYTE, source_data[1]);
+                     GL_UNSIGNED_BYTE, source_data[source_ycbcr_format == INTERNAL_YCBCR_FORMAT ? 2 : 1]);
         CHECKEGL
         glUniform1i (shader->texture[2], 2);
         CHECKEGL

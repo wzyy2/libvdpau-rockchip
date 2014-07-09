@@ -156,10 +156,10 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
                     VdpBitstreamBuffer const *buffers);
 
 static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
-                    VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
+                    VdpBitstreamBuffer const *buffers, VdpVideoSurface output);
 
 VdpStatus decoder_decode(void *private, uint32_t buffer_count,
-                    VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output)
+                    VdpBitstreamBuffer const *buffers, VdpVideoSurface output)
 {
     v4l2_decoder_t *ctx = (v4l2_decoder_t*)private;
 
@@ -350,7 +350,7 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     VDPAU_DBG("Stream ON");
 
 #if 0
-    // Only need FIMC if we cannot set this capture pixel format
+    // Only need FIMC if we cannot set this capture pixel format to NV12M
     // Setup mfc capture
     memzero(fmt);
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
@@ -361,7 +361,6 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
         ctx->startConverter = 1;
     } else {
         ctx->needConvert = 0;
-        ctx->startConverter = 0;
     }
 #else
     ctx->needConvert = 1;
@@ -546,7 +545,7 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
 }
 
 static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
-                    VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output)
+                    VdpBitstreamBuffer const *buffers, VdpVideoSurface output)
 {
     // MAIN LOOP
     int index = 0;
@@ -648,8 +647,6 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
             VDPAU_DBG("-> %d", index);
             ctx->captureBuffers[index].bQueue = FALSE;
 
-            // TODO send to video surface
-
             ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, ctx->captureBuffers[index].iNumPlanes, index, &ctx->captureBuffers[index]);
             if (ret == V4L2_ERROR) {
                 VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", index, errno);
@@ -675,6 +672,11 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
             ctx->converterBuffers[index].bQueue = FALSE;
         }
 
+        // TODO send to video surface
+        vdp_video_surface_put_bits_y_cb_cr(output, INTERNAL_YCBCR_FORMAT,
+                                           ctx->converterBuffers[index].cPlane,
+                                           ctx->converterBuffers[index].iSize);
+
         ret = QueueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, ctx->converterBuffers[index].iNumPlanes, index, &ctx->converterBuffers[index]);
         if (ret == V4L2_ERROR) {
             VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", index, errno);
@@ -684,6 +686,9 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
         VDPAU_DBG("%d <-", ret);
     } else {
         // TODO send to video surface
+        vdp_video_surface_put_bits_y_cb_cr(output, VDP_YCBCR_FORMAT_NV12,
+                                           ctx->captureBuffers[index].cPlane,
+                                           ctx->captureBuffers[index].iSize);
 
         ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, ctx->captureBuffers[index].iNumPlanes, index, &ctx->captureBuffers[index]);
         if (ret == V4L2_ERROR) {

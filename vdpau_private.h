@@ -123,7 +123,7 @@ typedef struct decoder_ctx_struct
     uint32_t debug;
 
     VdpStatus (*decode)(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
-                        VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
+                        VdpBitstreamBuffer const *buffers, VdpVideoSurface output);
 
     void *private;
 } decoder_ctx_t;
@@ -223,7 +223,7 @@ typedef struct
 void *decoder_open(VdpDecoderProfile profile, uint32_t width, uint32_t height);
 void decoder_close(void *private);
 VdpStatus decoder_decode(void *private, uint32_t buffer_count,
-                    VdpBitstreamBuffer const *buffers, video_surface_ctx_t *output);
+                    VdpBitstreamBuffer const *buffers, VdpVideoSurface output);
 
 
 int handle_create(void *data);
