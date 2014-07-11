@@ -349,23 +349,19 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     }
     VDPAU_DBG("Stream ON");
 
-#if 0
     // Only need FIMC if we cannot set this capture pixel format to NV12M
     // Setup mfc capture
     memzero(fmt);
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
     fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12M;
-    if(ioctl(ctx->decoderHandle, VIDIOC_S_FMT, &fmt)) {
-        VDPAU_ERR("Failed to set capture format");
+    if(ioctl(ctx->decoderHandle, VIDIOC_TRY_FMT, &fmt)) {
         ctx->needConvert = 1;
         ctx->startConverter = 1;
+        VDPAU_DBG("Direct decoding to untiled picture is NOT supported, FIMC conversion needed");
     } else {
         ctx->needConvert = 0;
+        VDPAU_DBG("Direct decoding to untiled picture is supported, no conversion needed");
     }
-#else
-    ctx->needConvert = 1;
-    ctx->startConverter = 1;
-#endif
 
     // Get mfc capture picture format
     memzero(fmt);
