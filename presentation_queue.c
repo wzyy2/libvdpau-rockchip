@@ -228,6 +228,13 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     if (earliest_presentation_time != 0)
         VDPAU_DBG_ONCE("Presentation time not supported");
 
+    if (os->vs)
+    {
+        if (os->vs->source_format == INTERNAL_YCBCR_FORMAT) {
+            get_picture(os->vs->private, os->vs);
+        }
+    }
+
     if (!eglMakeCurrent(q->device->egl.display, q->target->surface,
                         q->target->surface, q->target->context)) {
         VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());

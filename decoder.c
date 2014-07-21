@@ -163,6 +163,7 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
         return VDP_STATUS_INVALID_HANDLE;
 
     vid->source_format = INTERNAL_YCBCR_FORMAT;
+    vid->private = dec->private;
 
     if (dec->decode)
         return dec->decode(dec, picture_info, bitstream_buffer_count, bitstream_buffers, target);

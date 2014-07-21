@@ -269,6 +269,14 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 
     vs->source_format = source_ycbcr_format;
 
+    return internal_vdp_video_surface_put_bits_y_cb_cr(vs, source_ycbcr_format, source_data, source_pitches);
+}
+
+VdpStatus internal_vdp_video_surface_put_bits_y_cb_cr(video_surface_ctx_t *vs,
+                                             VdpYCbCrFormat source_ycbcr_format,
+                                             void const *const *source_data,
+                                             uint32_t const *source_pitches)
+{
     shader_ctx_t *shader;
 
     switch (source_ycbcr_format)

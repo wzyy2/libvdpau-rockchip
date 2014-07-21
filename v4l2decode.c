@@ -356,7 +356,6 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12M;
     if(ioctl(ctx->decoderHandle, VIDIOC_TRY_FMT, &fmt)) {
         ctx->needConvert = 1;
-        ctx->startConverter = 1;
         VDPAU_DBG("Direct decoding to untiled picture is NOT supported, FIMC conversion needed");
     } else {
         ctx->needConvert = 0;
@@ -525,6 +524,15 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
             ctx->converterBuffers[i].bQueue = TRUE;
         }
         VDPAU_DBG("Succesfully mmapped and queued %d buffers", ctx->converterBuffersCount);
+
+        if (StreamOn(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, VIDIOC_STREAMON))
+            VDPAU_DBG("Stream ON");
+        else
+            VDPAU_ERR("Failed to Stream ON");
+        if (StreamOn(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, VIDIOC_STREAMON))
+            VDPAU_DBG("Stream ON");
+        else
+            VDPAU_ERR("Failed to Stream ON");
     }
 
     // Dequeue header on input queue
@@ -566,80 +574,59 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
             }
             ctx->outputBuffers[index].bQueue = FALSE;
             VDPAU_DBG("-> %d", index);
+        } else if (ret == V4L2_BUSY) {
+            index = -1;
         } else {
             VDPAU_ERR("PollOutput unexpected error, what the? %d", ret);
             return VDP_STATUS_ERROR;
         }
     }
 
-    // Parse frame, copy it to buffer
-    int frameSize = 0;
-    ret = parse_stream(ctx->parser, ctx->outputBuffers[index].cPlane[0], STREAM_BUFFER_SIZE, &frameSize, FALSE);
-    if (ret < 0)
-        return VDP_STATUS_ERROR;
-    if (ret == 0)
-        // PK should check if FIMC is done with any buffers
-        return VDP_STATUS_OK;
-    ctx->outputBuffers[index].iBytesUsed[0] = frameSize;
-    VDPAU_DBG("Extracted frame of size %d", frameSize);
+    if (index >= 0) {
+        // Parse frame, copy it to buffer
+        int frameSize = 0;
+        ret = parse_stream(ctx->parser, ctx->outputBuffers[index].cPlane[0], STREAM_BUFFER_SIZE, &frameSize, FALSE);
+        if (ret < 0)
+            return VDP_STATUS_ERROR;
+        if (ret != 0) {
+            ctx->outputBuffers[index].iBytesUsed[0] = frameSize;
+            VDPAU_DBG("Extracted frame of size %d", frameSize);
 
-    // Queue buffer into input queue
-    ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, ctx->outputBuffers[index].iNumPlanes, index, &ctx->outputBuffers[index]);
-    if (ret == V4L2_ERROR) {
-        VDPAU_ERR("Failed to queue buffer with index %d, errno %d", index, errno);
-        return VDP_STATUS_ERROR;
-    }
-    ctx->outputBuffers[index].bQueue = TRUE;
-    VDPAU_DBG("%d <-", index);
-
-    index = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, V4L2_NUM_MAX_PLANES);
-    if (index < 0) {
-        if (index == -EAGAIN) {// Dequeue buffer not ready, need more data on input. EAGAIN = 11
-            VDPAU_DBG("again...");
-            // PK should check if FIMC is done with any buffers
-            return VDP_STATUS_OK;
+            // Queue buffer into input queue
+            ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, ctx->outputBuffers[index].iNumPlanes, index, &ctx->outputBuffers[index]);
+            if (ret == V4L2_ERROR) {
+                VDPAU_ERR("Failed to queue buffer with index %d, errno %d", index, errno);
+                return VDP_STATUS_ERROR;
+            }
+            ctx->outputBuffers[index].bQueue = TRUE;
+            VDPAU_DBG("%d <-", index);
         }
-        VDPAU_ERR("error dequeue output buffer, got number %d", index);
-        return VDP_STATUS_ERROR;
     }
-    ctx->captureBuffers[index].bQueue = FALSE;
-    VDPAU_DBG("-> %d", index);
 
     if(ctx->needConvert) {
-        //Process frame after mfc
-        ret = QueueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_USERPTR, ctx->captureBuffers[index].iNumPlanes, index, &ctx->captureBuffers[index]);
-        if (ret == V4L2_ERROR) {
-            VDPAU_ERR("Failed to queue buffer with index %d", index);
-            return VDP_STATUS_ERROR;
-        }
-        ctx->captureBuffers[ret].bQueue = TRUE;
-        VDPAU_DBG("%d <-", ret);
-
-        if (ctx->startConverter) {
-            if (StreamOn(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, VIDIOC_STREAMON))
-                VDPAU_DBG("Stream ON");
-            else
-                VDPAU_ERR("Failed to Stream ON");
-            if (StreamOn(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, VIDIOC_STREAMON))
-                VDPAU_DBG("Stream ON");
-            else
-                VDPAU_ERR("Failed to Stream ON");
-            ctx->startConverter = FALSE;
-            return VDP_STATUS_OK; //PK should not return here. To make FIMC have two buffers queued at the same time, or it will decode one buffer at a time which is slow
-        }
-
-        // PK Should not reallt poll it should only poll if there are no capture buffers left. and it should be before feeding data to the mfc decoder!
-        ret = PollOutput(ctx->converterHandle, 1000/20); // wait a 20 fps gap between images for buffer to come out
-        if (ret == V4L2_ERROR) {
-            VDPAU_ERR("PollInput Error");
-            return VDP_STATUS_ERROR;
-        } else if (ret == V4L2_READY) {
-            // Dequeue frame from fimc output and pass it back to mfc capture
-            index = DequeueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_USERPTR, V4L2_NUM_MAX_PLANES);
-            if (index < 0) {
+        index = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, V4L2_NUM_MAX_PLANES);
+        if (index < 0) {
+            if (index != -EAGAIN) {// Dequeue buffer not ready, need more data on input. EAGAIN = 11
                 VDPAU_ERR("error dequeue output buffer, got number %d", index);
                 return VDP_STATUS_ERROR;
             }
+        } else {
+            ctx->captureBuffers[index].bQueue = FALSE;
+            VDPAU_DBG("-> %d", index);
+
+            //Process frame after mfc
+            ret = QueueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_USERPTR, ctx->captureBuffers[index].iNumPlanes, index, &ctx->captureBuffers[index]);
+            if (ret == V4L2_ERROR) {
+                VDPAU_ERR("Failed to queue buffer with index %d", index);
+                return VDP_STATUS_ERROR;
+            }
+            ctx->captureBuffers[ret].bQueue = TRUE;
+            VDPAU_DBG("%d <-", ret);
+       }
+
+        // Dequeue frame from fimc output and pass it back to mfc capture
+        index = DequeueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_USERPTR, V4L2_NUM_MAX_PLANES);
+        if (index >= 0) {
             VDPAU_DBG("-> %d", index);
             ctx->captureBuffers[index].bQueue = FALSE;
 
@@ -650,26 +637,30 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
             }
             ctx->captureBuffers[ret].bQueue = TRUE;
             VDPAU_DBG("<- %d", ret);
-        } else if (ret == V4L2_BUSY) { // CAPTURE buffer is still busy
-            return VDP_STATUS_OK;
-        } else {
-            VDPAU_ERR("What the? %d", ret);
-            return VDP_STATUS_ERROR;
         }
+    }
+    return VDP_STATUS_OK;
+}
 
+VdpStatus get_picture(void *context, video_surface_ctx_t *output) {
+    v4l2_decoder_t *ctx = (v4l2_decoder_t *)context;
+    int index = 0;
+    int ret;
+
+    if(ctx->needConvert) {
         index = DequeueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, V4L2_NUM_MAX_PLANES);
         if (index < 0) {
             if (index == -EAGAIN) // Dequeue buffer not ready, need more data on input. EAGAIN = 11
                 return VDP_STATUS_OK;
-            VDPAU_ERR("error dequeue output buffer, got number %d", index);
+            if (errno == 22)
+                return VDP_STATUS_OK;
+            VDPAU_ERR("error dequeue output buffer, got number %d %d", index, errno);
             return VDP_STATUS_ERROR;
-        } else {
-            VDPAU_DBG("-> %d", index);
-            ctx->converterBuffers[index].bQueue = FALSE;
         }
+        VDPAU_DBG("-> %d", index);
+        ctx->converterBuffers[index].bQueue = FALSE;
 
-        // TODO send to video surface
-        vdp_video_surface_put_bits_y_cb_cr(output, INTERNAL_YCBCR_FORMAT,
+        internal_vdp_video_surface_put_bits_y_cb_cr(output, INTERNAL_YCBCR_FORMAT,
                                            ctx->converterBuffers[index].cPlane,
                                            ctx->converterBuffers[index].iSize);
 
@@ -678,11 +669,22 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
             VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", index, errno);
             return VDP_STATUS_ERROR;
         }
-        ctx->converterBuffers[ret].bQueue = TRUE;
-        VDPAU_DBG("%d <-", ret);
+        ctx->converterBuffers[index].bQueue = TRUE;
+        VDPAU_DBG("%d <-", index);
     } else {
-        // TODO send to video surface
-        vdp_video_surface_put_bits_y_cb_cr(output, VDP_YCBCR_FORMAT_NV12,
+        index = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, V4L2_NUM_MAX_PLANES);
+        if (index < 0) {
+            if (index == -EAGAIN) {// Dequeue buffer not ready, need more data on input. EAGAIN = 11
+                VDPAU_DBG("again...");
+                return VDP_STATUS_OK;
+            }
+            VDPAU_ERR("error dequeue output buffer, got number %d", index);
+            return VDP_STATUS_ERROR;
+        }
+        ctx->captureBuffers[index].bQueue = FALSE;
+        VDPAU_DBG("-> %d", index);
+
+        internal_vdp_video_surface_put_bits_y_cb_cr(output, VDP_YCBCR_FORMAT_NV12,
                                            ctx->captureBuffers[index].cPlane,
                                            ctx->captureBuffers[index].iSize);
 
