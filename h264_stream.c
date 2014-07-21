@@ -26,10 +26,6 @@
 
 #include "h264_stream.h"
 
-FILE* h264_dbgfile = NULL;
-
-#define printf(...) fprintf((h264_dbgfile == NULL ? stdout : h264_dbgfile), __VA_ARGS__)
-
 /**
  Calculate the log base 2 of the argument, rounded up.
  Zero or negative arguments return zero
