@@ -31,6 +31,4 @@ typedef struct {
 
 #define STREAM_BUFFER_CNT         3       //3 input buffers. 2 is enough almost for everything, but on some heavy videos 3 makes a difference
 
-#define CAPTURE_EXTRA_BUFFER_CNT  1       //can be 1
-
 #define CONVERTER_VIDEO_BUFFERS_CNT 3     //2 begins to be slow. maybe on video only, but not on convert.

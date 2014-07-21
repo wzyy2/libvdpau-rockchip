@@ -397,7 +397,7 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
         VDPAU_ERR("Failed to get the number of buffers required");
         return -1;
     }
-    ctx->captureBuffersCount = ctrl.value + CAPTURE_EXTRA_BUFFER_CNT;
+    ctx->captureBuffersCount = (int)(ctrl.value * 1.5);
 
     // Get mfc capture crop
     memzero(crop);
@@ -426,7 +426,7 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
         VDPAU_ERR("REQBUFS failed");
         return -1;
     }
-    VDPAU_DBG("REQBUFS Number of buffers is %d (extra %d)", ctx->captureBuffersCount, CAPTURE_EXTRA_BUFFER_CNT);
+    VDPAU_DBG("REQBUFS Number of buffers is %d", ctx->captureBuffersCount);
 
     // Memory Map and queue mfc capture buffers
     ctx->captureBuffers = (v4l2_buffer_t *)calloc(ctx->captureBuffersCount, sizeof(v4l2_buffer_t));
