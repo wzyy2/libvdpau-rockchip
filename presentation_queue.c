@@ -228,13 +228,6 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     if (earliest_presentation_time != 0)
         VDPAU_DBG_ONCE("Presentation time not supported");
 
-    if (os->vs)
-    {
-        if (os->vs->source_format == INTERNAL_YCBCR_FORMAT) {
-            get_picture(os->vs->private, os->vs);
-        }
-    }
-
     if (!eglMakeCurrent(q->device->egl.display, q->target->surface,
                         q->target->surface, q->target->context)) {
         VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());
@@ -247,6 +240,16 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 
     if (os->vs)
     {
+        if (os->vs->source_format == INTERNAL_YCBCR_FORMAT) {
+            int frame;
+            void **buffers;
+            decoder_get_picture(os->vs->private, &frame, &buffers);
+            if (buffers != NULL) {
+                video_surface_render_picture(os->vs, buffers);
+                decoder_release_picture(os->vs->private, frame);
+            }
+        }
+
         /* Do the GLES display of the video */
         GLfloat vVertices[] =
         {

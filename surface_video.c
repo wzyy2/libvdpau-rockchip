@@ -187,14 +187,6 @@ static const GLfloat kColorConversion709[3][3] = {
 
 static void shader_init(video_surface_ctx_t *vs, shader_ctx_t *shader)
 {
-    device_ctx_t *dev = vs->device;
-
-    if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
-                        dev->egl.surface, dev->egl.context)) {
-        VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());
-        return;
-    }
-
     glBindFramebuffer (GL_FRAMEBUFFER, vs->framebuffer);
     CHECKEGL
 
@@ -251,11 +243,6 @@ static void shader_draw(video_surface_ctx_t *vs)
 
     glUseProgram(0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    if (!eglMakeCurrent(vs->device->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-        VDPAU_DBG ("Could not set EGL context to none %x", eglGetError());
-        return;
-    }
 }
 
 VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
@@ -263,28 +250,26 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
                                              void const *const *source_data,
                                              uint32_t const *source_pitches)
 {
+    shader_ctx_t *shader;
     video_surface_ctx_t *vs = handle_get(surface);
     if (!vs)
         return VDP_STATUS_INVALID_HANDLE;
 
     vs->source_format = source_ycbcr_format;
 
-    return internal_vdp_video_surface_put_bits_y_cb_cr(vs, source_ycbcr_format, source_data, source_pitches);
-}
-
-VdpStatus internal_vdp_video_surface_put_bits_y_cb_cr(video_surface_ctx_t *vs,
-                                             VdpYCbCrFormat source_ycbcr_format,
-                                             void const *const *source_data,
-                                             uint32_t const *source_pitches)
-{
-    shader_ctx_t *shader;
+    device_ctx_t *dev = vs->device;
+    if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
+                        dev->egl.surface, dev->egl.context)) {
+        VDPAU_ERR("Could not set EGL context to current %x", eglGetError());
+        return VDP_STATUS_ERROR;
+    }
 
     switch (source_ycbcr_format)
     {
     case VDP_YCBCR_FORMAT_YUYV:
     case VDP_YCBCR_FORMAT_UYVY:
         if (vs->chroma_type != VDP_CHROMA_TYPE_422)
-            return VDP_STATUS_INVALID_CHROMA_TYPE;
+            goto chroma;
 
         VDPAU_DBG("YUYV");
         if (vs->width != source_pitches[0]) {
@@ -319,7 +304,7 @@ VdpStatus internal_vdp_video_surface_put_bits_y_cb_cr(video_surface_ctx_t *vs,
     case VDP_YCBCR_FORMAT_Y8U8V8A8:
     case VDP_YCBCR_FORMAT_V8U8Y8A8:
         if (vs->chroma_type != VDP_CHROMA_TYPE_444)
-            return VDP_STATUS_INVALID_CHROMA_TYPE;
+            goto chroma;
 
         VDPAU_DBG("YUYV");
         if (vs->width != source_pitches[0]) {
@@ -350,7 +335,7 @@ VdpStatus internal_vdp_video_surface_put_bits_y_cb_cr(video_surface_ctx_t *vs,
 
     case VDP_YCBCR_FORMAT_NV12:
         if (vs->chroma_type != VDP_CHROMA_TYPE_420)
-            return VDP_STATUS_INVALID_CHROMA_TYPE;
+            goto chroma;
 
         VDPAU_DBG("NV12");
         if (vs->width != source_pitches[0]) {
@@ -388,9 +373,8 @@ VdpStatus internal_vdp_video_surface_put_bits_y_cb_cr(video_surface_ctx_t *vs,
         break;
 
     case VDP_YCBCR_FORMAT_YV12:
-    case INTERNAL_YCBCR_FORMAT:
         if (vs->chroma_type != VDP_CHROMA_TYPE_420)
-            return VDP_STATUS_INVALID_CHROMA_TYPE;
+            goto chroma;
 
         if (vs->width != source_pitches[0]) {
             VDPAU_DBG("YV12 %d, %d %d %d", vs->width, source_pitches[0], source_pitches[1], source_pitches[2]);
@@ -439,6 +423,64 @@ VdpStatus internal_vdp_video_surface_put_bits_y_cb_cr(video_surface_ctx_t *vs,
         break;
     }
 
+    if (!eglMakeCurrent(vs->device->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+        VDPAU_ERR("Could not set EGL context to none %x", eglGetError());
+        return VDP_STATUS_ERROR;
+    }
+
+    return VDP_STATUS_OK;
+
+chroma:
+    if (!eglMakeCurrent(vs->device->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+        VDPAU_ERR("Could not set EGL context to none %x", eglGetError());
+    }
+
+    return VDP_STATUS_INVALID_CHROMA_TYPE;
+}
+
+VdpStatus video_surface_render_picture(video_surface_ctx_t *vs,
+                                             void **source_data)
+{
+    shader_ctx_t *shader = &vs->device->egl.yuvi420_rgb;
+    shader_init(vs, shader);
+
+    /* y component */
+    glActiveTexture(GL_TEXTURE0);
+    CHECKEGL
+    glBindTexture (GL_TEXTURE_2D, vs->y_tex);
+    CHECKEGL
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width,
+                 vs->height, 0, GL_LUMINANCE,
+                 GL_UNSIGNED_BYTE, source_data[0]);
+    CHECKEGL
+    glUniform1i (shader->texture[0], 0);
+    CHECKEGL
+
+    /* u component */
+    glActiveTexture(GL_TEXTURE1);
+    CHECKEGL
+    glBindTexture (GL_TEXTURE_2D, vs->u_tex);
+    CHECKEGL
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width/2,
+                 vs->height/2, 0, GL_LUMINANCE,
+                 GL_UNSIGNED_BYTE, source_data[1]);
+    CHECKEGL
+    glUniform1i (shader->texture[1], 1);
+    CHECKEGL
+
+    /* v component */
+    glActiveTexture(GL_TEXTURE2);
+    CHECKEGL
+    glBindTexture (GL_TEXTURE_2D, vs->v_tex);
+    CHECKEGL
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width/2,
+                 vs->height/2, 0, GL_LUMINANCE,
+                 GL_UNSIGNED_BYTE, source_data[2]);
+    CHECKEGL
+    glUniform1i (shader->texture[2], 2);
+    CHECKEGL
+
+    shader_draw(vs);
     return VDP_STATUS_OK;
 }
 

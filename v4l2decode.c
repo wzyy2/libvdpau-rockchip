@@ -642,10 +642,13 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
     return VDP_STATUS_OK;
 }
 
-VdpStatus get_picture(void *context, video_surface_ctx_t *output) {
+VdpStatus decoder_get_picture(void *context, int *frame, void ***output)
+{
     v4l2_decoder_t *ctx = (v4l2_decoder_t *)context;
     int index = 0;
-    int ret;
+
+    *frame = -1;
+    *output = NULL;
 
     if(ctx->needConvert) {
         index = DequeueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, V4L2_NUM_MAX_PLANES);
@@ -657,20 +660,10 @@ VdpStatus get_picture(void *context, video_surface_ctx_t *output) {
             VDPAU_ERR("error dequeue output buffer, got number %d %d", index, errno);
             return VDP_STATUS_ERROR;
         }
-        VDPAU_DBG("-> %d", index);
         ctx->converterBuffers[index].bQueue = FALSE;
-
-        internal_vdp_video_surface_put_bits_y_cb_cr(output, INTERNAL_YCBCR_FORMAT,
-                                           ctx->converterBuffers[index].cPlane,
-                                           ctx->converterBuffers[index].iSize);
-
-        ret = QueueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, ctx->converterBuffers[index].iNumPlanes, index, &ctx->converterBuffers[index]);
-        if (ret == V4L2_ERROR) {
-            VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", index, errno);
-            return VDP_STATUS_ERROR;
-        }
-        ctx->converterBuffers[index].bQueue = TRUE;
-        VDPAU_DBG("%d <-", index);
+        *output = ctx->converterBuffers[index].cPlane;
+        *frame = index;
+        VDPAU_DBG("-> %d", index);
     } else {
         index = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, V4L2_NUM_MAX_PLANES);
         if (index < 0) {
@@ -682,15 +675,31 @@ VdpStatus get_picture(void *context, video_surface_ctx_t *output) {
             return VDP_STATUS_ERROR;
         }
         ctx->captureBuffers[index].bQueue = FALSE;
+        *output = ctx->captureBuffers[index].cPlane;
+        *frame = index;
         VDPAU_DBG("-> %d", index);
+    }
 
-        internal_vdp_video_surface_put_bits_y_cb_cr(output, VDP_YCBCR_FORMAT_NV12,
-                                           ctx->captureBuffers[index].cPlane,
-                                           ctx->captureBuffers[index].iSize);
+    return VDP_STATUS_OK;
+}
 
-        ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, ctx->captureBuffers[index].iNumPlanes, index, &ctx->captureBuffers[index]);
+VdpStatus decoder_release_picture(void *context, int frame)
+{
+    v4l2_decoder_t *ctx = (v4l2_decoder_t *)context;
+    int ret;
+
+    if(ctx->needConvert) {
+        ret = QueueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, ctx->converterBuffers[frame].iNumPlanes, frame, &ctx->converterBuffers[frame]);
         if (ret == V4L2_ERROR) {
-            VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", index, errno);
+            VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", frame, errno);
+            return VDP_STATUS_ERROR;
+        }
+        ctx->converterBuffers[ret].bQueue = TRUE;
+        VDPAU_DBG("%d <-", ret);
+    } else {
+        ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, ctx->captureBuffers[frame].iNumPlanes, frame, &ctx->captureBuffers[frame]);
+        if (ret == V4L2_ERROR) {
+            VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", frame, errno);
             return VDP_STATUS_ERROR;
         }
         ctx->captureBuffers[ret].bQueue = TRUE;

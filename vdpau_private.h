@@ -225,7 +225,8 @@ void *decoder_open(VdpDecoderProfile profile, uint32_t width, uint32_t height);
 void decoder_close(void *private);
 VdpStatus decoder_decode(void *private, uint32_t buffer_count,
                     VdpBitstreamBuffer const *buffers, VdpVideoSurface output);
-
+VdpStatus decoder_get_picture(void *context, int *frame, void ***output);
+VdpStatus decoder_release_picture(void *context, int frame);
 
 int handle_create(void *data);
 void *handle_get(int handle);
@@ -263,7 +264,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(VdpVideoSurface surface, VdpYCbCrFo
 VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface, VdpYCbCrFormat source_ycbcr_format, void const *const *source_data, uint32_t const *source_pitches);
 VdpStatus vdp_video_surface_query_capabilities(VdpDevice device, VdpChromaType surface_chroma_type, VdpBool *is_supported, uint32_t *max_width, uint32_t *max_height);
 VdpStatus vdp_video_surface_query_get_put_bits_y_cb_cr_capabilities(VdpDevice device, VdpChromaType surface_chroma_type, VdpYCbCrFormat bits_ycbcr_format, VdpBool *is_supported);
-VdpStatus internal_vdp_video_surface_put_bits_y_cb_cr(video_surface_ctx_t *surface, VdpYCbCrFormat source_ycbcr_format, void const *const *source_data, uint32_t const *source_pitches);
+VdpStatus video_surface_render_picture(video_surface_ctx_t *vs, void **source_data);
 
 VdpStatus vdp_output_surface_create(VdpDevice device, VdpRGBAFormat rgba_format, uint32_t width, uint32_t height, VdpOutputSurface  *surface);
 VdpStatus vdp_output_surface_destroy(VdpOutputSurface surface);
