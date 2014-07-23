@@ -376,3 +376,40 @@ void write_rbsp_trailing_bits(bs_t* b)
         bs_write_f(b,1, rbsp_alignment_zero_bit); // equal to 0
     }
 }
+
+#if 0
+#include <stdio.h>
+int main(int ac, char **av) {
+    VdpPictureInfoH264 info;
+    info.frame_num = 0;
+    info.field_pic_flag = 0;
+    info.bottom_field_flag = 0;
+    info.num_ref_frames = 3;
+    info.mb_adaptive_frame_field_flag = 0;
+    info.constrained_intra_pred_flag = 0;
+    info.weighted_pred_flag = 0;
+    info.weighted_bipred_idc = 0;
+    info.frame_mbs_only_flag = 0;
+    info.transform_8x8_mode_flag = 0;
+    info.chroma_qp_index_offset = 0;
+    info.second_chroma_qp_index_offset = 0;
+    info.pic_init_qp_minus26 = 0;
+    info.num_ref_idx_l0_active_minus1 = 0;
+    info.num_ref_idx_l1_active_minus1 = 0;
+    info.log2_max_frame_num_minus4 = 5;
+    info.pic_order_cnt_type = 0;
+    info.log2_max_pic_order_cnt_lsb_minus4 = 5;
+    info.delta_pic_order_always_zero_flag = 0;
+    info.direct_8x8_inference_flag = 0;
+    info.entropy_coding_mode_flag = 0;
+    info.pic_order_present_flag = 0;
+    info.redundant_pic_cnt_present_flag = 0;
+
+    uint8_t buf[512];
+    int size;
+    FILE *f = fopen("test", "w");
+    size = write_nal_unit(NAL_UNIT_TYPE_SPS, 720, 576, VDP_DECODER_PROFILE_H264_HIGH, &info, buf, sizeof(buf));
+    fwrite(buf, 1, size, f);
+    fclose(f);
+}
+#endif
