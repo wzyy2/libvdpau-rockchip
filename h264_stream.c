@@ -185,12 +185,12 @@ void write_seq_parameter_set_rbsp(int width, int height, VdpDecoderProfile profi
             break;
     }
     bs_write_u8(b, profile_idc);
-    bs_write_u1(b, 0);//sps->constraint_set0_flag);
-    bs_write_u1(b, 0);//sps->constraint_set1_flag);
+    bs_write_u1(b, profile_idc == H264_PROFILE_BASELINE);//sps->constraint_set0_flag);
+    bs_write_u1(b, profile_idc <= H264_PROFILE_MAIN);//sps->constraint_set1_flag);
     bs_write_u1(b, 0);//sps->constraint_set2_flag);
     bs_write_u1(b, 0);//sps->constraint_set3_flag);
     bs_write_u(b, 4, 0);  /* reserved_zero_4bits */
-    bs_write_u8(b, 31);//sps->level_idc);
+    bs_write_u8(b, 40);//sps->level_idc);
     bs_write_ue(b, 0);//sps->seq_parameter_set_id);
     if(profile_idc >= H264_PROFILE_HIGH)
     {
