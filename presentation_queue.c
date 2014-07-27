@@ -240,16 +240,6 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
 
     if (os->vs)
     {
-        if (os->vs->source_format == INTERNAL_YCBCR_FORMAT) {
-            int frame;
-            void **buffers;
-            decoder_get_picture(os->vs->private, &frame, &buffers);
-            if (buffers != NULL) {
-                video_surface_render_picture(os->vs, buffers);
-                decoder_release_picture(os->vs->private, frame);
-            }
-        }
-
         /* Do the GLES display of the video */
         GLfloat vVertices[] =
         {

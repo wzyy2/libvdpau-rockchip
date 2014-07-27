@@ -122,6 +122,16 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
     if (os->rgba.flags & RGBA_FLAG_DIRTY)
         os->rgba.flags |= RGBA_FLAG_NEEDS_CLEAR;
 
+    if (os->vs->source_format == INTERNAL_YCBCR_FORMAT) {
+        int frame;
+        void **buffers;
+        decoder_get_picture(os->vs->private, &frame, &buffers);
+        if (buffers != NULL) {
+            video_surface_render_picture(os->vs, buffers);
+            decoder_release_picture(os->vs->private, frame);
+        }
+    }
+
     if (layer_count != 0)
         VDPAU_DBG_ONCE("Requested unimplemented additional layers");
 
