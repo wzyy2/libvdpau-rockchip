@@ -195,7 +195,11 @@ VdpStatus vdp_device_destroy(VdpDevice device)
         return VDP_STATUS_INVALID_HANDLE;
 
     gl_delete_shader(&dev->egl.yuvi420_rgb);
+    gl_delete_shader(&dev->egl.yuyv422_rgb);
+    gl_delete_shader(&dev->egl.uyvy422_rgb);
     gl_delete_shader(&dev->egl.yuvnv12_rgb);
+    gl_delete_shader(&dev->egl.yuv8444_rgb);
+    gl_delete_shader(&dev->egl.vuy8444_rgb);
     gl_delete_shader(&dev->egl.copy);
     gl_delete_shader(&dev->egl.brswap);
 
