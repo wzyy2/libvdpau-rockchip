@@ -21,7 +21,7 @@
 #include "v4l2.h"
 #include "v4l2decode.h"
 
-static void openDevices(v4l2_decoder_t *ctx);
+static int openDevices(v4l2_decoder_t *ctx);
 static void cleanup(v4l2_decoder_t *ctx);
 
 static __u32 get_codec(VdpDecoderProfile profile)
@@ -44,6 +44,20 @@ static __u32 get_codec(VdpDecoderProfile profile)
     case VDP_DECODER_PROFILE_MPEG4_PART2_ASP:
         return V4L2_PIX_FMT_MPEG4;
     }
+//    VDP_DECODER_PROFILE_VC1_SIMPLE
+//    VDP_DECODER_PROFILE_VC1_MAIN
+//    VDP_DECODER_PROFILE_VC1_ADVANCED
+//    VDP_DECODER_PROFILE_MPEG4_PART2_SP
+//    VDP_DECODER_PROFILE_MPEG4_PART2_ASP
+//    VDP_DECODER_PROFILE_DIVX4_QMOBILE
+//    VDP_DECODER_PROFILE_DIVX4_MOBILE
+//    VDP_DECODER_PROFILE_DIVX4_HOME_THEATER
+//    VDP_DECODER_PROFILE_DIVX4_HD_1080P
+//    VDP_DECODER_PROFILE_DIVX5_QMOBILE
+//    VDP_DECODER_PROFILE_DIVX5_MOBILE
+//    VDP_DECODER_PROFILE_DIVX5_HOME_THEATER
+//    VDP_DECODER_PROFILE_DIVX5_HD_1080P
+
     //            return V4L2_PIX_FMT_H263;
     //            return V4L2_PIX_FMT_XVID;
     return V4L2_PIX_FMT_H264;
@@ -90,7 +104,10 @@ void *decoder_open(VdpDecoderProfile profile, uint32_t width, uint32_t height)
 
     ctx->mode = get_mode(profile);
     ctx->codec = get_codec(profile);
-    openDevices(ctx);
+    if(openDevices(ctx)) {
+        cleanup(ctx);
+        return NULL;
+    }
 
     ctx->parser = parse_stream_init(ctx->mode, STREAM_BUFFER_SIZE);
 
@@ -177,7 +194,7 @@ VdpStatus decoder_decode(void *private, uint32_t buffer_count,
 
 
 
-static void openDevices(v4l2_decoder_t *ctx)
+static int openDevices(v4l2_decoder_t *ctx)
 {
     DIR *dir;
     struct dirent *ent;
@@ -223,25 +240,46 @@ static void openDevices(v4l2_decoder_t *ctx)
                     if (fd > 0) {
                         memzero(cap);
                         if (!ioctl(fd, VIDIOC_QUERYCAP, &cap))
-                            if ((cap.capabilities & V4L2_CAP_VIDEO_M2M_MPLANE ||
-                                    ((cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE) && (cap.capabilities & V4L2_CAP_VIDEO_OUTPUT_MPLANE))) &&
-                                    (cap.capabilities & V4L2_CAP_STREAMING)) {
+                            if ((cap.capabilities & V4L2_CAP_STREAMING) &&
+                                    ((cap.capabilities & V4L2_CAP_VIDEO_M2M_MPLANE) ||
+                                    (cap.capabilities & (V4L2_CAP_VIDEO_CAPTURE_MPLANE | V4L2_CAP_VIDEO_OUTPUT_MPLANE)))) {
                                 ctx->decoderHandle = fd;
                                 VDPAU_DBG("Found %s %s", drivername, devname);
+
+                                // Only need FIMC if we cannot set this capture pixel format to NV12M
+                                struct v4l2_format fmt;
+                                memzero(fmt);
+                                fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+                                fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12M;
+                                if(ioctl(ctx->decoderHandle, VIDIOC_TRY_FMT, &fmt)) {
+                                    ctx->needConvert = 1;
+                                    VDPAU_DBG("Direct decoding to untiled picture is NOT supported, FIMC conversion needed");
+                                } else {
+                                    ctx->needConvert = 0;
+                                    VDPAU_DBG("Direct decoding to untiled picture is supported, no conversion needed");
+                                    if(ioctl(ctx->decoderHandle, VIDIOC_S_FMT, &fmt)) {
+                                        VDPAU_DBG("Failed to set decoder capture format to NV12M");
+                                        return -1;
+                                    }
+                                    if (ctx->converterHandle >= 0) {
+                                        close(ctx->converterHandle);
+                                    }
+                                }
+
                             }
                   }
                   if (ctx->decoderHandle < 0)
                       close(fd);
                 }
-                if (ctx->converterHandle < 0 && strstr(drivername, "fimc") != NULL && strstr(drivername, "m2m") != NULL) {
+                if (ctx->needConvert && ctx->converterHandle < 0 && strstr(drivername, "fimc") != NULL && strstr(drivername, "m2m") != NULL) {
                     struct v4l2_capability cap;
                     int fd = open(devname, O_RDWR | O_NONBLOCK, 0);
                     if (fd > 0) {
                         memzero(cap);
                         if (!ioctl(fd, VIDIOC_QUERYCAP, &cap))
-                            if ((cap.capabilities & V4L2_CAP_VIDEO_M2M_MPLANE ||
-                                    ((cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE) && (cap.capabilities & V4L2_CAP_VIDEO_OUTPUT_MPLANE))) &&
-                                    (cap.capabilities & V4L2_CAP_STREAMING)) {
+                            if ((cap.capabilities & V4L2_CAP_STREAMING) &&
+                                    ((cap.capabilities & V4L2_CAP_VIDEO_M2M_MPLANE) ||
+                                    (cap.capabilities & (V4L2_CAP_VIDEO_CAPTURE_MPLANE | V4L2_CAP_VIDEO_OUTPUT_MPLANE)))) {
                                 ctx->converterHandle = fd;
                                 VDPAU_DBG("Found %s %s", drivername, devname);
                             }
@@ -253,34 +291,31 @@ static void openDevices(v4l2_decoder_t *ctx)
         }
         closedir (dir);
     }
-    return;
+    return 0;
 }
 
 static void cleanup(v4l2_decoder_t *ctx)
 {
-    VDPAU_DBG("MUnmapping buffers");
-    if (ctx->outputBuffers)
-        ctx->outputBuffers = FreeBuffers(ctx->outputBuffersCount, ctx->outputBuffers);
-    if (ctx->captureBuffers)
-        ctx->captureBuffers = FreeBuffers(ctx->captureBuffersCount, ctx->captureBuffers);
-    if (ctx->converterBuffers)
-        ctx->converterBuffers = FreeBuffers(ctx->converterBuffersCount, ctx->converterBuffers);
-
-    VDPAU_DBG("Devices cleanup");
-    if (StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, VIDIOC_STREAMOFF))
-        VDPAU_ERR("Stream OFF");
-    if (StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, VIDIOC_STREAMOFF))
-        VDPAU_ERR("Stream OFF");
-    if (StreamOn(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, VIDIOC_STREAMOFF))
-        VDPAU_ERR("Stream OFF");
-    if (StreamOn(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, VIDIOC_STREAMOFF))
-        VDPAU_ERR("Stream OFF");
-
-    VDPAU_DBG("Closing devices");
-    if (ctx->decoderHandle >= 0)
+    if (ctx->decoderHandle >= 0) {
+        if (ctx->outputBuffers)
+            ctx->outputBuffers = FreeBuffers(ctx->outputBuffersCount, ctx->outputBuffers);
+        if (ctx->captureBuffers)
+            ctx->captureBuffers = FreeBuffers(ctx->captureBuffersCount, ctx->captureBuffers);
+        if (StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, VIDIOC_STREAMOFF))
+            VDPAU_ERR("Stream OFF");
+        if (StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, VIDIOC_STREAMOFF))
+            VDPAU_ERR("Stream OFF");
         close(ctx->decoderHandle);
-    if (ctx->converterHandle >= 0)
+    }
+    if (ctx->converterHandle >= 0) {
+        if (ctx->converterBuffers)
+            ctx->converterBuffers = FreeBuffers(ctx->converterBuffersCount, ctx->converterBuffers);
+        if (StreamOn(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, VIDIOC_STREAMOFF))
+            VDPAU_ERR("Stream OFF");
+        if (StreamOn(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, VIDIOC_STREAMOFF))
+            VDPAU_ERR("Stream OFF");
         close(ctx->converterHandle);
+    }
 }
 
 static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
@@ -320,23 +355,6 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
         return -1;
     }
     VDPAU_DBG("Stream ON");
-
-    // Only need FIMC if we cannot set this capture pixel format to NV12M
-    // Setup mfc capture
-    memzero(fmt);
-    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-    fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12M;
-    if(ioctl(ctx->decoderHandle, VIDIOC_TRY_FMT, &fmt)) {
-        ctx->needConvert = 1;
-        VDPAU_DBG("Direct decoding to untiled picture is NOT supported, FIMC conversion needed");
-    } else {
-        ctx->needConvert = 0;
-        VDPAU_DBG("Direct decoding to untiled picture is supported, no conversion needed");
-        if(ioctl(ctx->decoderHandle, VIDIOC_S_FMT, &fmt)) {
-            VDPAU_DBG("Failed to set decoder capture format to NV12M");
-            return -1;
-        }
-    }
 
     // Get mfc capture picture format
     memzero(fmt);
