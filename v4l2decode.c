@@ -117,22 +117,23 @@ void *decoder_open(VdpDecoderProfile profile, uint32_t width, uint32_t height)
     fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
     fmt.fmt.pix_mp.pixelformat = ctx->codec;
     fmt.fmt.pix_mp.plane_fmt[0].sizeimage = STREAM_BUFFER_SIZE;
-    fmt.fmt.pix_mp.num_planes = 1;
     if (ioctl(ctx->decoderHandle, VIDIOC_S_FMT, &fmt)) {
         VDPAU_ERR("Failed to setup for MFC decoding");
         cleanup(ctx);
         return NULL;
     }
 
-    // Get mfc output format
-    memzero(fmt);
-    fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-    if (ioctl(ctx->decoderHandle, VIDIOC_G_FMT, &fmt)) {
-        VDPAU_ERR("Get Format failed");
-        cleanup(ctx);
-        return NULL;
+    // Setup MFC CAPTURE format if we don't need FIMC conversion
+    if (!ctx->needConvert) {
+        memzero(fmt);
+        fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+        fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12M;
+        if (ioctl(ctx->decoderHandle, VIDIOC_S_FMT, &fmt)) {
+            VDPAU_ERR("Set MFC Capture Format failed");
+            cleanup(ctx);
+            return NULL;
+        }
     }
-    VDPAU_DBG("Setup MFC decoding buffer size=%u (requested=%u)", fmt.fmt.pix_mp.plane_fmt[0].sizeimage, STREAM_BUFFER_SIZE);
 
     // Request mfc output buffers
     ctx->outputBuffersCount = RequestBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, STREAM_BUFFER_CNT);
@@ -257,13 +258,8 @@ static int openDevices(v4l2_decoder_t *ctx)
                                 } else {
                                     ctx->needConvert = 0;
                                     VDPAU_DBG("Direct decoding to untiled picture is supported, no conversion needed");
-                                    if(ioctl(ctx->decoderHandle, VIDIOC_S_FMT, &fmt)) {
-                                        VDPAU_DBG("Failed to set decoder capture format to NV12M");
-                                        return -1;
-                                    }
-                                    if (ctx->converterHandle >= 0) {
+                                    if (ctx->converterHandle >= 0)
                                         close(ctx->converterHandle);
-                                    }
                                 }
 
                             }
@@ -371,14 +367,10 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
                         (fmt.fmt.pix_mp.pixelformat >> 16) & 0xFF, (fmt.fmt.pix_mp.pixelformat >> 24) & 0xFF,
                         capturePlane1Size, capturePlane2Size, capturePlane3Size);
 
+    // Setup FIMC OUTPUT fmt with data from MFC CAPTURE if required
     if(ctx->needConvert) {
-        // Setup FIMC OUTPUT fmt with data from MFC CAPTURE
-        fmt.type                                = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-        fmt.fmt.pix_mp.field                    = V4L2_FIELD_ANY;
-        fmt.fmt.pix_mp.pixelformat              = V4L2_PIX_FMT_NV12MT;
-        fmt.fmt.pix_mp.num_planes               = V4L2_NUM_MAX_PLANES;
-        ret = ioctl(ctx->converterHandle, VIDIOC_S_FMT, &fmt);
-        if (ret != 0) {
+        fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+        if (ioctl(ctx->converterHandle, VIDIOC_S_FMT, &fmt)) {
             VDPAU_ERR("Failed to SFMT on OUTPUT of FIMC");
             return -1;
         }
@@ -460,9 +452,8 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
         memzero(fmt);
         fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_YUV420M;
         fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-        fmt.fmt.pix_mp.width = ctx->width;
-        fmt.fmt.pix_mp.height = ctx->height;
-        fmt.fmt.pix_mp.num_planes = V4L2_NUM_MAX_PLANES;
+        fmt.fmt.pix_mp.width = ctx->captureWidth;
+        fmt.fmt.pix_mp.height = ctx->captureHeight;
         fmt.fmt.pix_mp.field = V4L2_FIELD_ANY;
         if (ioctl(ctx->converterHandle, VIDIOC_S_FMT, &fmt)) {
             VDPAU_ERR("Failed SFMT");
