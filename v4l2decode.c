@@ -167,9 +167,8 @@ VdpStatus decoder_decode(void *private, uint32_t buffer_count,
         int ret = process_header(ctx, buffer_count, buffers);
         if(ret)
             return ret < 0 ? VDP_STATUS_ERROR : VDP_STATUS_OK;
-        if (ctx->codec == V4L2_PIX_FMT_H263)
-            return process_frames(ctx, buffer_count, buffers, output);
-        return VDP_STATUS_OK;
+        if (ctx->codec != V4L2_PIX_FMT_H263)
+            return VDP_STATUS_OK;
     }
 
     return process_frames(ctx, buffer_count, buffers, output);
@@ -177,29 +176,6 @@ VdpStatus decoder_decode(void *private, uint32_t buffer_count,
 
 
 
-
-static void listFormats(v4l2_decoder_t *ctx)
-{
-    // we enumerate all the supported formats looking for NV12MT and NV12
-    int index = 0;
-    while (1) {
-        struct v4l2_fmtdesc vid_fmtdesc = {};
-        vid_fmtdesc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-        vid_fmtdesc.index = index++;
-
-        if (ioctl(ctx->decoderHandle, VIDIOC_ENUM_FMT, &vid_fmtdesc))
-            break;
-
-        VDPAU_DBG("Decoder format %d: %c%c%c%c (%s)", vid_fmtdesc.index,
-            vid_fmtdesc.pixelformat & 0xFF, (vid_fmtdesc.pixelformat >> 8) & 0xFF,
-            (vid_fmtdesc.pixelformat >> 16) & 0xFF, (vid_fmtdesc.pixelformat >> 24) & 0xFF,
-            vid_fmtdesc.description);
-        if (vid_fmtdesc.pixelformat == V4L2_PIX_FMT_NV12MT)
-            ;
-        if (vid_fmtdesc.pixelformat == V4L2_PIX_FMT_NV12)
-            ;
-    }
-}
 
 static void openDevices(v4l2_decoder_t *ctx)
 {
@@ -272,10 +248,6 @@ static void openDevices(v4l2_decoder_t *ctx)
                     }
                     if (ctx->converterHandle < 0)
                         close(fd);
-                }
-                if (ctx->decoderHandle >= 0 && ctx->converterHandle >= 0) {
-                    listFormats(ctx);
-                    break;
                 }
             }
         }
@@ -360,6 +332,10 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     } else {
         ctx->needConvert = 0;
         VDPAU_DBG("Direct decoding to untiled picture is supported, no conversion needed");
+        if(ioctl(ctx->decoderHandle, VIDIOC_S_FMT, &fmt)) {
+            VDPAU_DBG("Failed to set decoder capture format to NV12M");
+            return -1;
+        }
     }
 
     // Get mfc capture picture format
