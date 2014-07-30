@@ -33,6 +33,7 @@
 #include <GLES2/gl2.h>
 
 #define INTERNAL_YCBCR_FORMAT (VdpYCbCrFormat)0xffff
+#define INTERNAL_RGB8_FORMAT (VdpYCbCrFormat)0xfffe
 
 typedef enum
 {

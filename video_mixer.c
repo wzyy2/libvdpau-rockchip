@@ -130,6 +130,8 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
             video_surface_render_picture(os->vs, buffers);
             decoder_release_picture(os->vs->private, frame);
         }
+        // we do this so that once the buffer is poplated it won't try again
+        os->vs->source_format = INTERNAL_RGB8_FORMAT;
     }
 
     if (layer_count != 0)
