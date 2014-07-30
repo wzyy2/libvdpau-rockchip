@@ -50,8 +50,8 @@ int StreamOn(int device, enum v4l2_buf_type type, int onoff);
 int MmapBuffers(int device, int count, v4l2_buffer_t *v4l2Buffers, enum v4l2_buf_type type, enum v4l2_memory memory, int queue);
 v4l2_buffer_t *FreeBuffers(int count, v4l2_buffer_t *v4l2Buffers);
 
-int DequeueBuffer(int device, enum v4l2_buf_type type, enum v4l2_memory memory, int planes);
-int QueueBuffer(int device, enum v4l2_buf_type type, enum v4l2_memory memory, int planes, int index, v4l2_buffer_t *buffer);
+int DequeueBuffer(int device, enum v4l2_buf_type type, enum v4l2_memory memory);
+int QueueBuffer(int device, enum v4l2_buf_type type, enum v4l2_memory memory, v4l2_buffer_t *buffer);
 
 int PollInput(int device, int timeout);
 int PollOutput(int device, int timeout);

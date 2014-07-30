@@ -103,6 +103,7 @@ int MmapBuffers(int device, int count, v4l2_buffer_t *v4l2Buffers, enum v4l2_buf
     v4l2_buffer_t *buffer = &v4l2Buffers[i];
 
     buffer->iNumPlanes = 0;
+    buffer->bQueue = FALSE;
     for (j = 0; j < V4L2_NUM_MAX_PLANES; j++)
     {
       //printf("%s::%s - plane %d %d size %d 0x%08x", i, j, buf.m.planes[j].length,
@@ -125,14 +126,7 @@ int MmapBuffers(int device, int count, v4l2_buffer_t *v4l2Buffers, enum v4l2_buf
     buffer->iIndex = i;
 
     if(queue)
-    {
-      ret = ioctl(device, VIDIOC_QBUF, &buf);
-      if (ret)
-      {
-        VDPAU_DBG("queue output buffer");
-        return FALSE;
-      }
-    }
+      QueueBuffer(device, type, memory, buffer);
   }
 
   return TRUE;
@@ -161,7 +155,7 @@ v4l2_buffer_t *FreeBuffers(int count, v4l2_buffer_t *v4l2Buffers)
   return NULL;
 }
 
-int DequeueBuffer(int device, enum v4l2_buf_type type, enum v4l2_memory memory, int planes)
+int DequeueBuffer(int device, enum v4l2_buf_type type, enum v4l2_memory memory)
 {
   struct v4l2_buffer vbuf;
   struct v4l2_plane  vplanes[V4L2_NUM_MAX_PLANES];
@@ -175,7 +169,7 @@ int DequeueBuffer(int device, enum v4l2_buf_type type, enum v4l2_memory memory, 
   vbuf.type     = type;
   vbuf.memory   = memory;
   vbuf.m.planes = vplanes;
-  vbuf.length   = planes;
+  vbuf.length   = V4L2_NUM_MAX_PLANES;
 
   ret = ioctl(device, VIDIOC_DQBUF, &vbuf);
   if (ret) {
@@ -189,7 +183,7 @@ int DequeueBuffer(int device, enum v4l2_buf_type type, enum v4l2_memory memory, 
 }
 
 int QueueBuffer(int device, enum v4l2_buf_type type,
-    enum v4l2_memory memory, int planes, int index, v4l2_buffer_t *buffer)
+    enum v4l2_memory memory, v4l2_buffer_t *buffer)
 {
   struct v4l2_buffer vbuf;
   struct v4l2_plane  vplanes[V4L2_NUM_MAX_PLANES];
@@ -203,7 +197,7 @@ int QueueBuffer(int device, enum v4l2_buf_type type,
   memzero(vbuf);
   vbuf.type     = type;
   vbuf.memory   = memory;
-  vbuf.index    = index;
+  vbuf.index    = buffer->iIndex;
   vbuf.m.planes = vplanes;
   vbuf.length   = buffer->iNumPlanes;
 
@@ -222,8 +216,9 @@ int QueueBuffer(int device, enum v4l2_buf_type type,
     VDPAU_DBG("queue input buffer");
     return V4L2_ERROR;
   }
+  buffer->bQueue = TRUE;
 
-  return index;
+  return buffer->iIndex;
 }
 
 int PollInput(int device, int timeout)
