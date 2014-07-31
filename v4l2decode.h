@@ -1,5 +1,3 @@
-#include "parser.h"
-
 typedef struct {
     uint32_t width;
     uint32_t height;
@@ -22,8 +20,6 @@ typedef struct {
     int captureHeight;
 
     int headerProcessed;
-    parser_context_t *parser;
-    parser_mode_t mode;
 } v4l2_decoder_t;
 
 #define STREAM_BUFFER_SIZE        1572864 //compressed frame size. 1080p mpeg4 10Mb/s can be >256k in size, so this is to make sure frame fits into buffer

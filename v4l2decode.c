@@ -63,30 +63,6 @@ static __u32 get_codec(VdpDecoderProfile profile)
     return V4L2_PIX_FMT_H264;
 }
 
-static parser_mode_t get_mode(VdpDecoderProfile profile)
-{
-    switch (profile)
-    {
-    case VDP_DECODER_PROFILE_MPEG1:
-    case VDP_DECODER_PROFILE_MPEG2_SIMPLE:
-    case VDP_DECODER_PROFILE_MPEG2_MAIN:
-        return MODE_MPEG12;
-
-    case VDP_DECODER_PROFILE_H264_BASELINE:
-    case VDP_DECODER_PROFILE_H264_MAIN:
-    case VDP_DECODER_PROFILE_H264_HIGH:
-        return MODE_H264;
-
-    case VDP_DECODER_PROFILE_MPEG4_PART2_SP:
-    case VDP_DECODER_PROFILE_MPEG4_PART2_ASP:
-        return MODE_MPEG4;
-    }
-    //            return V4L2_PIX_FMT_H263;
-    //            return V4L2_PIX_FMT_XVID;
-    return MODE_H264;
-}
-
-
 void *decoder_open(VdpDecoderProfile profile, uint32_t width, uint32_t height)
 {
     v4l2_decoder_t *ctx = calloc(1, sizeof(v4l2_decoder_t));
@@ -102,14 +78,11 @@ void *decoder_open(VdpDecoderProfile profile, uint32_t width, uint32_t height)
     ctx->captureBuffersCount = -1;
     ctx->converterBuffersCount = -1;
 
-    ctx->mode = get_mode(profile);
     ctx->codec = get_codec(profile);
     if(openDevices(ctx)) {
         cleanup(ctx);
         return NULL;
     }
-
-    ctx->parser = parse_stream_init(ctx->mode, STREAM_BUFFER_SIZE);
 
     // Setup mfc output
     // Set mfc output format
@@ -166,7 +139,6 @@ void decoder_close(void *private)
     v4l2_decoder_t *ctx = (v4l2_decoder_t*)private;
     cleanup(ctx);
 
-    free(ctx->parser);
     free(ctx);
 }
 
@@ -326,14 +298,11 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
     int capturePlane2Size;
     int capturePlane3Size;
 
-    for(i=0 ; i<buffer_count ; i++)
-        parse_push(ctx->parser, buffers[i].bitstream, buffers[i].bitstream_bytes);
-
-    ret = parse_stream(ctx->parser, ctx->outputBuffers[0].cPlane[0], STREAM_BUFFER_SIZE, &size, TRUE);
-    if(ret <= 0)
-        return ret;
-
     // Prepare header frame
+    for(i=0 ; i<buffer_count ; i++) {
+        memcpy(ctx->outputBuffers[0].cPlane[0] + size, buffers[i].bitstream, buffers[i].bitstream_bytes);
+        size += buffers[i].bitstream_bytes;
+    }
     ctx->outputBuffers[0].iBytesUsed[0] = size;
 
     // Queue header to mfc output
@@ -527,9 +496,6 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
     int index = 0;
     int ret, i;
 
-    for(i=0 ; i<buffer_count ; i++)
-        parse_push(ctx->parser, buffers[i].bitstream, buffers[i].bitstream_bytes);
-
     while (index < ctx->outputBuffersCount && ctx->outputBuffers[index].bQueue)
         index++;
 
@@ -557,19 +523,18 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
     if (index >= 0) {
         // Parse frame, copy it to buffer
         int frameSize = 0;
-        ret = parse_stream(ctx->parser, ctx->outputBuffers[index].cPlane[0], STREAM_BUFFER_SIZE, &frameSize, FALSE);
-        if (ret < 0)
-            return VDP_STATUS_ERROR;
-        if (ret != 0) {
-            ctx->outputBuffers[index].iBytesUsed[0] = frameSize;
-            VDPAU_DBG("Extracted frame of size %d", frameSize);
+        for(i=0 ; i<buffer_count ; i++) {
+            memcpy(ctx->outputBuffers[index].cPlane[0] + frameSize, buffers[i].bitstream, buffers[i].bitstream_bytes);
+            frameSize += buffers[i].bitstream_bytes;
+        }
+        ctx->outputBuffers[index].iBytesUsed[0] = frameSize;
+        VDPAU_DBG("Extracted frame of size %d", frameSize);
 
-            // Queue buffer into input queue
-            ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, &ctx->outputBuffers[index]);
-            if (ret == V4L2_ERROR) {
-                VDPAU_ERR("Failed to queue buffer with index %d, errno %d", index, errno);
-                return VDP_STATUS_ERROR;
-            }
+        // Queue buffer into input queue
+        ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, &ctx->outputBuffers[index]);
+        if (ret == V4L2_ERROR) {
+            VDPAU_ERR("Failed to queue buffer with index %d, errno %d", index, errno);
+            return VDP_STATUS_ERROR;
         }
     }
 
