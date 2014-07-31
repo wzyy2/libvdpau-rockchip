@@ -163,6 +163,11 @@ int parse_stream(parser_context_t *ctx, char* out, int out_size, int *frame_size
         ctx->ptr++;
     }
 
+    if (!ctx->got_end && ctx->got_start) {
+        ctx->got_end = 1;
+        ctx->code_end = ctx->ptr;
+    }
+
     if (ctx->got_end && ctx->got_start) {
         frame_length = ctx->code_end - ctx->code_start;
         if (out_size < frame_length) {
@@ -199,3 +204,16 @@ int parse_stream(parser_context_t *ctx, char* out, int out_size, int *frame_size
 
     return frame_finished;
 }
+
+#if 0
+char picture[] = {0,0,1,1,0x80,0xf,0x0,0x0,0xd};
+int main(int argv, char **argc)
+{
+    int r, fs;
+    char out[512];
+    parser_context_t *parser = parse_stream_init(MODE_H264, 1000);
+    parse_push(parser, picture, sizeof(picture));
+    r=parse_stream(parser, out, sizeof(out), &fs, 0);
+    printf("%d %d", r, fs);
+}
+#endif
