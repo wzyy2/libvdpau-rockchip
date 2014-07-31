@@ -441,6 +441,13 @@ chroma:
 VdpStatus video_surface_render_picture(video_surface_ctx_t *vs,
                                              void **source_data)
 {
+    device_ctx_t *dev = vs->device;
+    if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
+                        dev->egl.surface, dev->egl.context)) {
+        VDPAU_ERR("Could not set EGL context to current %x", eglGetError());
+        return VDP_STATUS_ERROR;
+    }
+
     shader_ctx_t *shader = &vs->device->egl.yuvi420_rgb;
     shader_init(vs, shader);
 
@@ -481,6 +488,12 @@ VdpStatus video_surface_render_picture(video_surface_ctx_t *vs,
     CHECKEGL
 
     shader_draw(vs);
+
+    if (!eglMakeCurrent(vs->device->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+        VDPAU_ERR("Could not set EGL context to none %x", eglGetError());
+        return VDP_STATUS_ERROR;
+    }
+
     return VDP_STATUS_OK;
 }
 
