@@ -415,8 +415,8 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
         memzero(fmt);
         fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_YUV420M;
         fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-        fmt.fmt.pix_mp.width = ctx->captureWidth;
-        fmt.fmt.pix_mp.height = ctx->captureHeight;
+        fmt.fmt.pix_mp.width = ctx->width;
+        fmt.fmt.pix_mp.height = ctx->height;
         fmt.fmt.pix_mp.field = V4L2_FIELD_ANY;
         if (ioctl(ctx->converterHandle, VIDIOC_S_FMT, &fmt)) {
             VDPAU_ERR("Failed SFMT");
