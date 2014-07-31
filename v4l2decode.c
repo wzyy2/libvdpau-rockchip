@@ -496,7 +496,6 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
 static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
                     VdpBitstreamBuffer const *buffers, VdpVideoSurface output)
 {
-    // MAIN LOOP
     int index = 0;
     int ret, i;
 
@@ -508,40 +507,34 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
         if (ret == V4L2_ERROR) {
             VDPAU_ERR("PollInput Error");
             return VDP_STATUS_ERROR;
-        } else if (ret == V4L2_READY) {
-            index = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP);
-            if (index < 0) {
-                VDPAU_ERR("error dequeue output buffer, got number %d, errno %d", index, errno);
-                return VDP_STATUS_ERROR;
-            }
-            ctx->outputBuffers[index].bQueue = FALSE;
-            VDPAU_DBG("-> %d", index);
         } else if (ret == V4L2_BUSY) {
-            index = -1;
-        } else {
+            VDPAU_ERR("PollOutput busy after timeout");
+            return VDP_STATUS_ERROR;
+        } else if (ret != V4L2_READY) {
             VDPAU_ERR("PollOutput unexpected error, what the? %d", ret);
             return VDP_STATUS_ERROR;
         }
-        ctx->outputBuffers[index].bQueue = FALSE;
-    }
-
-    if (index >= 0) {
-        // Parse frame, copy it to buffer
-        int frameSize = 0;
-        for(i=0 ; i<buffer_count ; i++) {
-            memcpy(ctx->outputBuffers[index].cPlane[0] + frameSize, buffers[i].bitstream, buffers[i].bitstream_bytes);
-            frameSize += buffers[i].bitstream_bytes;
-        }
-        ctx->outputBuffers[index].iBytesUsed[0] = frameSize;
-        VDPAU_DBG("Extracted frame of size %d", frameSize);
-
-        // Queue buffer into input queue
-        ctx->outputBuffers[index].iBytesUsed[0] = frameSize;
-        ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, &ctx->outputBuffers[index]);
-        if (ret == V4L2_ERROR) {
-            VDPAU_ERR("Failed to queue buffer with index %d, errno %d", index, errno);
+        index = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP);
+        if (index < 0) {
+            VDPAU_ERR("error dequeue output buffer, got number %d, errno %d", index, errno);
             return VDP_STATUS_ERROR;
         }
+    }
+
+    // Parse frame, copy it to buffer
+    int frameSize = 0;
+    for(i=0 ; i<buffer_count ; i++) {
+        memcpy(ctx->outputBuffers[index].cPlane[0] + frameSize, buffers[i].bitstream, buffers[i].bitstream_bytes);
+        frameSize += buffers[i].bitstream_bytes;
+    }
+    ctx->outputBuffers[index].iBytesUsed[0] = frameSize;
+
+    // Queue buffer into input queue
+    ctx->outputBuffers[index].iBytesUsed[0] = frameSize;
+    ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, &ctx->outputBuffers[index]);
+    if (ret == V4L2_ERROR) {
+        VDPAU_ERR("Failed to queue buffer with index %d, errno %d", index, errno);
+        return VDP_STATUS_ERROR;
     }
 
     return VDP_STATUS_OK;
