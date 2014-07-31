@@ -23,6 +23,8 @@
 
 static int openDevices(v4l2_decoder_t *ctx);
 static void cleanup(v4l2_decoder_t *ctx);
+static void *pumpFIMC(void *arg);
+static void *pumpMFC(void *arg);
 
 static __u32 get_codec(VdpDecoderProfile profile)
 {
@@ -311,7 +313,6 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
         VDPAU_ERR("queue input buffer");
         return -1;
     }
-    VDPAU_DBG("<- %d header of size %d", ret, size);
 
     // STREAMON on mfc OUTPUT
     if (!StreamOn(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, VIDIOC_STREAMON)) {
@@ -474,6 +475,10 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
             VDPAU_DBG("Stream ON");
         else
             VDPAU_ERR("Failed to Stream ON");
+
+        // create FIMC pumping threads
+        pthread_create(&ctx->fimc_thread, NULL, &pumpFIMC, ctx);
+        pthread_create(&ctx->mfc_thread, NULL, &pumpMFC, ctx);
     }
 
     // Dequeue header on input queue
@@ -483,7 +488,6 @@ static int process_header(v4l2_decoder_t *ctx, uint32_t buffer_count,
         return -1;
     }
     ctx->outputBuffers[ret].bQueue = FALSE;
-    VDPAU_DBG("-> %d header", ret);
 
     ctx->headerProcessed = TRUE;
     return 0;
@@ -518,6 +522,7 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
             VDPAU_ERR("PollOutput unexpected error, what the? %d", ret);
             return VDP_STATUS_ERROR;
         }
+        ctx->outputBuffers[index].bQueue = FALSE;
     }
 
     if (index >= 0) {
@@ -531,6 +536,7 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
         VDPAU_DBG("Extracted frame of size %d", frameSize);
 
         // Queue buffer into input queue
+        ctx->outputBuffers[index].iBytesUsed[0] = frameSize;
         ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_MMAP, &ctx->outputBuffers[index]);
         if (ret == V4L2_ERROR) {
             VDPAU_ERR("Failed to queue buffer with index %d, errno %d", index, errno);
@@ -538,7 +544,61 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
         }
     }
 
-    if(ctx->needConvert) {
+    return VDP_STATUS_OK;
+}
+
+static void *pumpFIMC(void *arg)
+{
+    int ret, index;
+    v4l2_decoder_t *ctx = (v4l2_decoder_t *)arg;
+
+    while(1){
+        // Dequeue frame from fimc output and pass it back to mfc capture
+        ret = PollOutput(ctx->converterHandle, 1000);
+        if (ret == V4L2_ERROR) {
+            VDPAU_ERR("PollOutput Error");
+            return VDP_STATUS_ERROR;
+        } else if (ret == V4L2_BUSY) {
+            continue;
+        } else if (ret != V4L2_READY) {
+            VDPAU_ERR("PollOutput unexpected error, what the? %d", ret);
+            return VDP_STATUS_ERROR;
+        }
+
+        index = DequeueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_USERPTR);
+        if (index < 0) {
+            if (index != -EAGAIN) {// Dequeue buffer not ready, need more data on input. EAGAIN = 11
+                VDPAU_ERR("error dequeue output buffer, got number %d", index);
+                return VDP_STATUS_ERROR;
+            }
+        } else {
+            ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, &ctx->captureBuffers[index]);
+            if (ret == V4L2_ERROR) {
+                VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", index, errno);
+                return VDP_STATUS_ERROR;
+            }
+        }
+    }
+}
+
+static void *pumpMFC(void *arg)
+{
+    int ret, index;
+    v4l2_decoder_t *ctx = (v4l2_decoder_t *)arg;
+
+    while(1){
+        // Dequeue frame from MFC capture and pass it back to mfc capture
+        ret = PollInput(ctx->decoderHandle, 1000);
+        if (ret == V4L2_ERROR) {
+            VDPAU_ERR("PollInput Error");
+            return VDP_STATUS_ERROR;
+        } else if (ret == V4L2_BUSY) {
+            continue;
+        } else if (ret != V4L2_READY) {
+            VDPAU_ERR("PollInput unexpected error, what the? %d", ret);
+            return VDP_STATUS_ERROR;
+        }
+
         index = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP);
         if (index < 0) {
             if (index != -EAGAIN) {// Dequeue buffer not ready, need more data on input. EAGAIN = 11
@@ -546,33 +606,14 @@ static VdpStatus process_frames(v4l2_decoder_t *ctx, uint32_t buffer_count,
                 return VDP_STATUS_ERROR;
             }
         } else {
-            ctx->captureBuffers[index].bQueue = FALSE;
-            VDPAU_DBG("-> %d", index);
-
             //Process frame after mfc
             ret = QueueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_USERPTR, &ctx->captureBuffers[index]);
             if (ret == V4L2_ERROR) {
                 VDPAU_ERR("Failed to queue buffer with index %d", index);
                 return VDP_STATUS_ERROR;
             }
-            VDPAU_DBG("%d <-", ret);
-        }
-
-        // Dequeue frame from fimc output and pass it back to mfc capture
-        index = DequeueBuffer(ctx->converterHandle, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, V4L2_MEMORY_USERPTR);
-        if (index >= 0) {
-            VDPAU_DBG("-> %d", index);
-            ctx->captureBuffers[index].bQueue = FALSE;
-
-            ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, &ctx->captureBuffers[index]);
-            if (ret == V4L2_ERROR) {
-                VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", index, errno);
-                return VDP_STATUS_ERROR;
-            }
-            VDPAU_DBG("<- %d", ret);
         }
     }
-    return VDP_STATUS_OK;
 }
 
 VdpStatus decoder_get_picture(void *context, int *frame, void ***output)
@@ -588,29 +629,21 @@ VdpStatus decoder_get_picture(void *context, int *frame, void ***output)
         if (index < 0) {
             if (index == -EAGAIN) // Dequeue buffer not ready, need more data on input. EAGAIN = 11
                 return VDP_STATUS_OK;
-            if (errno == 22)
-                return VDP_STATUS_OK;
             VDPAU_ERR("error dequeue output buffer, got number %d %d", index, errno);
             return VDP_STATUS_ERROR;
         }
-        ctx->converterBuffers[index].bQueue = FALSE;
         *output = ctx->converterBuffers[index].cPlane;
         *frame = index;
-        VDPAU_DBG("-> %d", index);
     } else {
         index = DequeueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP);
         if (index < 0) {
-            if (index == -EAGAIN) {// Dequeue buffer not ready, need more data on input. EAGAIN = 11
-                VDPAU_DBG("again...");
+            if (index == -EAGAIN) // Dequeue buffer not ready, need more data on input. EAGAIN = 11
                 return VDP_STATUS_OK;
-            }
             VDPAU_ERR("error dequeue output buffer, got number %d", index);
             return VDP_STATUS_ERROR;
         }
-        ctx->captureBuffers[index].bQueue = FALSE;
         *output = ctx->captureBuffers[index].cPlane;
         *frame = index;
-        VDPAU_DBG("-> %d", index);
     }
 
     return VDP_STATUS_OK;
@@ -627,14 +660,12 @@ VdpStatus decoder_release_picture(void *context, int frame)
             VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", frame, errno);
             return VDP_STATUS_ERROR;
         }
-        VDPAU_DBG("%d <-", ret);
     } else {
         ret = QueueBuffer(ctx->decoderHandle, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, V4L2_MEMORY_MMAP, &ctx->captureBuffers[frame]);
         if (ret == V4L2_ERROR) {
             VDPAU_ERR("Failed to queue buffer with index %d, errno = %d", frame, errno);
             return VDP_STATUS_ERROR;
         }
-        VDPAU_DBG("<- %d", ret);
     }
 
     return VDP_STATUS_OK;
