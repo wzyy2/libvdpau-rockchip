@@ -110,6 +110,7 @@ VdpStatus rgba_put_bits_native(rgba_surface_t *rgba,
 
     rgba->flags &= ~RGBA_FLAG_NEEDS_CLEAR;
     rgba->flags |= RGBA_FLAG_DIRTY;
+    rgba->flags |= RGBA_FLAG_CHANGED;
     dirty_add_rect(&rgba->dirty, &d_rect);
 
     return VDP_STATUS_OK;
@@ -166,6 +167,7 @@ VdpStatus rgba_put_bits_indexed(rgba_surface_t *rgba,
 
     rgba->flags &= ~RGBA_FLAG_NEEDS_CLEAR;
     rgba->flags |= RGBA_FLAG_DIRTY;
+    rgba->flags |= RGBA_FLAG_CHANGED;
     dirty_add_rect(&rgba->dirty, &d_rect);
 
     return VDP_STATUS_OK;
@@ -208,6 +210,7 @@ VdpStatus rgba_render_surface(rgba_surface_t *dest,
 
     dest->flags &= ~RGBA_FLAG_NEEDS_CLEAR;
     dest->flags |= RGBA_FLAG_DIRTY;
+    dest->flags |= RGBA_FLAG_CHANGED;
     dirty_add_rect(&dest->dirty, &d_rect);
 
     return VDP_STATUS_OK;
@@ -219,7 +222,8 @@ void rgba_clear(rgba_surface_t *rgba)
         return;
 
     rgba_fill(rgba, &rgba->dirty, 0x00000000);
-    rgba->flags &= ~(RGBA_FLAG_DIRTY || RGBA_FLAG_NEEDS_CLEAR);
+    rgba->flags &= ~(RGBA_FLAG_DIRTY | RGBA_FLAG_NEEDS_CLEAR);
+    rgba->flags |= RGBA_FLAG_CHANGED;
     rgba->dirty.x0 = rgba->width;
     rgba->dirty.y0 = rgba->height;
     rgba->dirty.x1 = 0;

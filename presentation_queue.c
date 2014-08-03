@@ -351,9 +351,12 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, q->target->overlay);
         CHECKEGL
-        glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, os->rgba.width, os->rgba.height, 0, GL_RGBA,
-                  GL_UNSIGNED_BYTE, os->rgba.data);
-        CHECKEGL
+        if (os->rgba.flags & RGBA_FLAG_CHANGED) {
+            glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, os->rgba.width, os->rgba.height, 0, GL_RGBA,
+                      GL_UNSIGNED_BYTE, os->rgba.data);
+            CHECKEGL
+            os->rgba.flags &= ~RGBA_FLAG_CHANGED;
+        }
         glUniform1i (shader->texture[0], 0);
         CHECKEGL
 
