@@ -1,16 +1,18 @@
-TARGET = libvdpau_odroid.so.1
+TARGET = libvdpau_rockchip.so.1
 SRC = device.c presentation_queue.c surface_output.c surface_video.c \
-	surface_bitmap.c video_mixer.c decoder.c handles.c \
-	rgba.c gles.c h264_stream.c v4l2.c v4l2decode.c
-CFLAGS = -Wall -O3 -g
-LDFLAGS =
-LIBS = -lrt -lm -lX11 -lGLESv2 -lEGL
-CC = gcc
+      surface_bitmap.c video_mixer.c decoder.c handles.c \
+      rgba.c gles.c h264_decoder.c \
+      v4l2.c
+
+CFLAGS ?= -Wall -O3 -g -I ./include -I/usr/include/libdrm
+LDFLAGS ?=
+LIBS ?= -lrt -lm -lX11 -lrkdec-h264d -ldrm -lEGL -lGLESv2
+CC ?= gcc
 
 MAKEFLAGS += -rR --no-print-directory
 
-DEP_CFLAGS = -MD -MP -MQ $@
-LIB_CFLAGS = -fpic
+DEP_CFLAGS ?= -MD -MP -MQ $@
+LIB_CFLAGS ?= -fpic
 LIB_LDFLAGS = -shared -Wl,-soname,$(TARGET)
 
 OBJ = $(addsuffix .o,$(basename $(SRC)))
@@ -40,6 +42,6 @@ uninstall:
 	rm -f $(DESTDIR)$(MODULEDIR)/$(TARGET)
 
 %.o: %.c
-	$(CC) $(DEP_CFLAGS) $(LIB_CFLAGS) $(CFLAGS) -c $< -o $@
+	$(CC) $(DEP_CFLAGS) $(LIB_CFLAGS) $(CFLAGS) $(LDFLAGS) -c $< -o $@
 
 include $(wildcard $(DEP))

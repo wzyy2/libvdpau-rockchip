@@ -18,6 +18,11 @@
  */
 
 #include <math.h>
+#include <sys/mman.h>
+#include <time.h>
+#include <libdrm/drm_fourcc.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
 
 #include "vdpau_private.h"
 #include "rgba.h"
@@ -123,15 +128,60 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
         os->rgba.flags |= RGBA_FLAG_NEEDS_CLEAR;
 
     if (os->vs->source_format == INTERNAL_YCBCR_FORMAT) {
-        int frame;
-        void **buffers;
-        decoder_get_picture(os->vs->private, &frame, &buffers);
-        if (buffers != NULL) {
-            video_surface_render_picture(os->vs, buffers);
-            decoder_release_picture(os->vs->private, frame);
+        int index = os->vs->dec->get_picture(os->vs->dec);
+
+        if (index >= 0) {
+            int w = os->vs->dec->coded_width;
+            int h = os->vs->dec->coded_height;
+
+            if (os->vs->device->use_overlay) {
+                uint32_t handles[4], pitches[4], offsets[4];
+                uint32_t handle = 0;
+                int ret = 0;
+
+                ret = drmPrimeFDToHandle(os->vs->device->drm_fd,
+                        os->vs->dec->output[index], &handle);
+                if (ret < 0) {
+                    VDPAU_ERR("Could not get handle");
+                    os->vs->device->use_overlay = 0;
+                }
+
+                handles[0] = handle;
+                pitches[0] = w;
+                offsets[0] = 0;
+                handles[1] = handle;
+                pitches[1] = w;
+                offsets[1] = w * h;
+
+                ret = drmModeAddFB2(os->vs->device->drm_fd, w, h,
+                        DRM_FORMAT_NV12, handles, pitches, offsets,
+                        &os->vs->fb_id, 0);
+                if (ret < 0) {
+                    VDPAU_ERR("Could not add fb");
+                    os->vs->device->use_overlay = 0;
+                }
+            }
+
+            if (!os->vs->device->use_overlay) {
+                void *buffers[2];
+                size_t size = w * h * 3 / 2;
+                void *buf = mmap(NULL, size,
+                        PROT_READ | PROT_WRITE, MAP_SHARED,
+                        os->vs->dec->output[index], 0);
+
+                /* y */
+                buffers[0] = buf;
+                /* uv */
+                buffers[1] = buf + w * h;
+                os->vs->source_format = VDP_YCBCR_FORMAT_NV12;
+
+                video_surface_render_picture(os->vs, buffers);
+
+                munmap(buf, size);
+            }
+
+            os->vs->dec->release_picture(os->vs->dec, index);
         }
-        // we do this so that once the buffer is poplated it won't try again
-        os->vs->source_format = INTERNAL_RGB8_FORMAT;
     }
 
     if (layer_count != 0)

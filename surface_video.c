@@ -53,7 +53,6 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
         return VDP_STATUS_INVALID_CHROMA_TYPE;
     }
 
-    VDPAU_DBG ("egl make context current");
     if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
                         dev->egl.surface, dev->egl.context)) {
         VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());
@@ -185,9 +184,10 @@ static const GLfloat kColorConversion709[3][3] = {
     {1.164,  2.112,  0.0}
 };
 
-static void shader_init(video_surface_ctx_t *vs, shader_ctx_t *shader)
+static void shader_init(int x, int y, GLuint framebuffer,
+                        shader_ctx_t *shader)
 {
-    glBindFramebuffer (GL_FRAMEBUFFER, vs->framebuffer);
+    glBindFramebuffer (GL_FRAMEBUFFER, framebuffer);
     CHECKEGL
 
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER) ;
@@ -198,7 +198,7 @@ static void shader_init(video_surface_ctx_t *vs, shader_ctx_t *shader)
     glUseProgram (shader->program);
     CHECKEGL
 
-    glViewport(0, 0, vs->width, vs->height);
+    glViewport(0, 0, x, y);
     CHECKEGL
 
     glClear (GL_COLOR_BUFFER_BIT);
@@ -218,7 +218,7 @@ static void shader_init(video_surface_ctx_t *vs, shader_ctx_t *shader)
     glEnableVertexAttribArray (shader->texcoord_loc);
     CHECKEGL
 
-    if(vs->height > 576) {
+    if(y > 576) {
         glUniform3fv(shader->rcoeff_loc, 1, kColorConversion709[0]);
         CHECKEGL
         glUniform3fv(shader->gcoeff_loc, 1, kColorConversion709[1]);
@@ -245,19 +245,17 @@ static void shader_draw(video_surface_ctx_t *vs)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
+VdpStatus video_surface_put_bits_y_cb_cr(video_surface_ctx_t *vs,
                                              VdpYCbCrFormat source_ycbcr_format,
                                              void const *const *source_data,
                                              uint32_t const *source_pitches)
 {
     shader_ctx_t *shader;
-    video_surface_ctx_t *vs = handle_get(surface);
-    if (!vs)
-        return VDP_STATUS_INVALID_HANDLE;
-
-    vs->source_format = source_ycbcr_format;
-
     device_ctx_t *dev = vs->device;
+
+    int x = source_pitches ? source_pitches[0] : vs->width;
+    int y = vs->height;
+
     if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
                         dev->egl.surface, dev->egl.context)) {
         VDPAU_ERR("Could not set EGL context to current %x", eglGetError());
@@ -271,31 +269,26 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         if (vs->chroma_type != VDP_CHROMA_TYPE_422)
             goto chroma;
 
-        VDPAU_DBG("YUYV");
-        if (vs->width != source_pitches[0]) {
-            VDPAU_DBG("YUYV %d, %d", vs->width, source_pitches[0]);
-        }
-
         if (source_ycbcr_format == VDP_YCBCR_FORMAT_YUYV)
             shader = &vs->device->egl.yuyv422_rgb;
         else
             shader = &vs->device->egl.uyvy422_rgb;
 
-        shader_init(vs, shader);
+        shader_init(x, y, vs->framebuffer, shader);
 
         /* yuv component */
         glActiveTexture(GL_TEXTURE0);
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, vs->y_tex);
         CHECKEGL
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vs->width/2,
-                     vs->height, 0, GL_RGBA,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, x/2,
+                     y, 0, GL_RGBA,
                      GL_UNSIGNED_BYTE, source_data[0]);
         CHECKEGL
         glUniform1i (shader->texture[0], 0);
         CHECKEGL
 
-        glUniform1f (shader->stepX, 1.0f / vs->width);
+        glUniform1f (shader->stepX, 1.0f / x);
         CHECKEGL
 
         shader_draw(vs);
@@ -306,25 +299,20 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         if (vs->chroma_type != VDP_CHROMA_TYPE_444)
             goto chroma;
 
-        VDPAU_DBG("YUYV");
-        if (vs->width != source_pitches[0]) {
-            VDPAU_DBG("YUYV %d, %d", vs->width, source_pitches[0]);
-        }
-
         if (source_ycbcr_format == VDP_YCBCR_FORMAT_Y8U8V8A8)
             shader = &vs->device->egl.yuv8444_rgb;
         else
             shader = &vs->device->egl.vuy8444_rgb;
 
-        shader_init(vs, shader);
+        shader_init(x, y, vs->framebuffer, shader);
 
         /* yuv component */
         glActiveTexture(GL_TEXTURE0);
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, vs->y_tex);
         CHECKEGL
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vs->width,
-                     vs->height, 0, GL_RGBA,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, x,
+                     y, 0, GL_RGBA,
                      GL_UNSIGNED_BYTE, source_data[0]);
         CHECKEGL
         glUniform1i (shader->texture[0], 0);
@@ -337,21 +325,16 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         if (vs->chroma_type != VDP_CHROMA_TYPE_420)
             goto chroma;
 
-        VDPAU_DBG("NV12");
-        if (vs->width != source_pitches[0]) {
-            VDPAU_DBG("NV12 %d, %d %d", vs->width, source_pitches[0], source_pitches[1]);
-        }
-
         shader = &vs->device->egl.yuvnv12_rgb;
-        shader_init(vs, shader);
+        shader_init(x, y, vs->framebuffer, shader);
 
         /* y component */
         glActiveTexture(GL_TEXTURE0);
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, vs->y_tex);
         CHECKEGL
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width,
-                     vs->height, 0, GL_LUMINANCE,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, x,
+                     y, 0, GL_LUMINANCE,
                      GL_UNSIGNED_BYTE, source_data[0]);
         CHECKEGL
         glUniform1i (shader->texture[0], 0);
@@ -362,8 +345,8 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, vs->u_tex);
         CHECKEGL
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, vs->width/2,
-                     vs->height/2, 0, GL_LUMINANCE_ALPHA,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, x/2,
+                     y/2, 0, GL_LUMINANCE_ALPHA,
                      GL_UNSIGNED_BYTE, source_data[1]);
         CHECKEGL
         glUniform1i (shader->texture[1], 1);
@@ -376,20 +359,16 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         if (vs->chroma_type != VDP_CHROMA_TYPE_420)
             goto chroma;
 
-        if (vs->width != source_pitches[0]) {
-            VDPAU_DBG("YV12 %d, %d %d %d", vs->width, source_pitches[0], source_pitches[1], source_pitches[2]);
-        }
-
         shader = &vs->device->egl.yuvi420_rgb;
-        shader_init(vs, shader);
+        shader_init(x, y, vs->framebuffer, shader);
 
         /* y component */
         glActiveTexture(GL_TEXTURE0);
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, vs->y_tex);
         CHECKEGL
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width,
-                     vs->height, 0, GL_LUMINANCE,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, x,
+                     y, 0, GL_LUMINANCE,
                      GL_UNSIGNED_BYTE, source_data[0]);
         CHECKEGL
         glUniform1i (shader->texture[0], 0);
@@ -400,8 +379,8 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, vs->u_tex);
         CHECKEGL
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width/2,
-                     vs->height/2, 0, GL_LUMINANCE,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, x/2,
+                     y/2, 0, GL_LUMINANCE,
                      GL_UNSIGNED_BYTE, source_data[source_ycbcr_format == INTERNAL_YCBCR_FORMAT ? 1 : 2]);
         CHECKEGL
         glUniform1i (shader->texture[1], 1);
@@ -412,8 +391,8 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
         CHECKEGL
         glBindTexture (GL_TEXTURE_2D, vs->v_tex);
         CHECKEGL
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width/2,
-                     vs->height/2, 0, GL_LUMINANCE,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, x/2,
+                     y/2, 0, GL_LUMINANCE,
                      GL_UNSIGNED_BYTE, source_data[source_ycbcr_format == INTERNAL_YCBCR_FORMAT ? 2 : 1]);
         CHECKEGL
         glUniform1i (shader->texture[2], 2);
@@ -438,63 +417,26 @@ chroma:
     return VDP_STATUS_INVALID_CHROMA_TYPE;
 }
 
-VdpStatus video_surface_render_picture(video_surface_ctx_t *vs,
-                                             void **source_data)
+VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
+                                             VdpYCbCrFormat source_ycbcr_format,
+                                             void const *const *source_data,
+                                             uint32_t const *source_pitches)
 {
-    device_ctx_t *dev = vs->device;
-    if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
-                        dev->egl.surface, dev->egl.context)) {
-        VDPAU_ERR("Could not set EGL context to current %x", eglGetError());
-        return VDP_STATUS_ERROR;
-    }
+    video_surface_ctx_t *vs = handle_get(surface);
+    if (!vs)
+        return VDP_STATUS_INVALID_HANDLE;
 
-    shader_ctx_t *shader = &vs->device->egl.yuvi420_rgb;
-    shader_init(vs, shader);
+    vs->source_format = source_ycbcr_format;
 
-    /* y component */
-    glActiveTexture(GL_TEXTURE0);
-    CHECKEGL
-    glBindTexture (GL_TEXTURE_2D, vs->y_tex);
-    CHECKEGL
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width,
-                 vs->height, 0, GL_LUMINANCE,
-                 GL_UNSIGNED_BYTE, source_data[0]);
-    CHECKEGL
-    glUniform1i (shader->texture[0], 0);
-    CHECKEGL
+    return video_surface_put_bits_y_cb_cr(vs, source_ycbcr_format,
+                                          source_data, source_pitches);
+}
 
-    /* u component */
-    glActiveTexture(GL_TEXTURE1);
-    CHECKEGL
-    glBindTexture (GL_TEXTURE_2D, vs->u_tex);
-    CHECKEGL
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width/2,
-                 vs->height/2, 0, GL_LUMINANCE,
-                 GL_UNSIGNED_BYTE, source_data[1]);
-    CHECKEGL
-    glUniform1i (shader->texture[1], 1);
-    CHECKEGL
-
-    /* v component */
-    glActiveTexture(GL_TEXTURE2);
-    CHECKEGL
-    glBindTexture (GL_TEXTURE_2D, vs->v_tex);
-    CHECKEGL
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, vs->width/2,
-                 vs->height/2, 0, GL_LUMINANCE,
-                 GL_UNSIGNED_BYTE, source_data[2]);
-    CHECKEGL
-    glUniform1i (shader->texture[2], 2);
-    CHECKEGL
-
-    shader_draw(vs);
-
-    if (!eglMakeCurrent(vs->device->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-        VDPAU_ERR("Could not set EGL context to none %x", eglGetError());
-        return VDP_STATUS_ERROR;
-    }
-
-    return VDP_STATUS_OK;
+VdpStatus video_surface_render_picture(video_surface_ctx_t *vs,
+                                       void const *const source_data)
+{
+    return video_surface_put_bits_y_cb_cr(vs, vs->source_format,
+                                          source_data, NULL);
 }
 
 VdpStatus vdp_video_surface_query_capabilities(VdpDevice device,
@@ -529,7 +471,11 @@ VdpStatus vdp_video_surface_query_get_put_bits_y_cb_cr_capabilities(VdpDevice de
     if (!dev)
         return VDP_STATUS_INVALID_HANDLE;
 
-    *is_supported = VDP_FALSE;
+    if (surface_chroma_type == VDP_CHROMA_TYPE_420)
+        *is_supported = (bits_ycbcr_format == VDP_YCBCR_FORMAT_NV12) ||
+            (bits_ycbcr_format == VDP_YCBCR_FORMAT_YV12);
+    else
+        *is_supported = VDP_FALSE;
 
     return VDP_STATUS_OK;
 }

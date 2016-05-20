@@ -1,264 +1,297 @@
-/*
- *      Copyright (C) 2005-2012 Team XBMC
- *      http://www.xbmc.org
- *
- *  This Program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2, or (at your option)
- *  any later version.
- *
- *  This Program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, see
- *  <http://www.gnu.org/licenses/>.
- *
- */
-
+#include <dirent.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/errno.h>
-#include <unistd.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <poll.h>
 #include <sys/mman.h>
 #include <linux/media.h>
 
 #include "v4l2.h"
-#include "vdpau_private.h"
 
-int RequestBuffer(int device, enum v4l2_buf_type type, enum v4l2_memory memory, int numBuffers)
-{
-  struct v4l2_requestbuffers reqbuf;
-  int ret = 0;
+#define PRINT(...) \
+    printf(__VA_ARGS__)
 
-  if(device < 0)
-    return FALSE;
+#define IOCTL_OR_ERROR_RETURN_VALUE(type, arg, value, type_str)           \
+    do {                                                                    \
+        if (ioctl(dec->fd, type, arg) != 0) {                                 \
+            PRINT("%s(%d):ioctl() failed: %s\n", __func__, __LINE__, type_str); \
+            return value;                                                       \
+        }                                                                     \
+    } while (0)
 
-  memzero(reqbuf);
+#define IOCTL_OR_ERROR_RETURN(type, arg) \
+    IOCTL_OR_ERROR_RETURN_VALUE(type, arg, -1, #type)
 
-  reqbuf.type     = type;
-  reqbuf.memory   = memory;
-  reqbuf.count    = numBuffers;
+#define IOCTL_OR_LOG_ERROR(type, arg)                                 \
+    do {                                                                \
+        if (ioctl(dec->fd, type, arg) != 0)                               \
+        PRINT("(): ioctl() failed: " #type);                            \
+    } while (0)
 
-  ret = ioctl(device, VIDIOC_REQBUFS, &reqbuf);
-  if (ret)
-  {
-    VDPAU_DBG("request buffers");
-    return V4L2_ERROR;
-  }
 
-  return reqbuf.count;
-}
+int v4l2_init(const char *device_path) {
+    int fd = open(device_path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
 
-int StreamOn(int device, enum v4l2_buf_type type, int onoff)
-{
-  int ret = 0;
-  enum v4l2_buf_type setType = type;
-
-  if(device < 0)
-    return FALSE;
-
-  ret = ioctl(device, onoff, &setType);
-  if(ret)
-    return FALSE;
-
-  return TRUE;
-}
-
-int MmapBuffers(int device, int count, v4l2_buffer_t *v4l2Buffers, enum v4l2_buf_type type, enum v4l2_memory memory, int queue)
-{
-  struct v4l2_buffer buf;
-  struct v4l2_plane planes[V4L2_NUM_MAX_PLANES];
-  int ret;
-  int i, j;
-
-  if(device < 0 || !v4l2Buffers || count == 0)
-    return FALSE;
-
-  for(i = 0; i < count; i++)
-  {
-    memzero(buf);
-    memzero(planes);
-    buf.type      = type;
-    buf.memory    = memory;
-    buf.index     = i;
-    buf.m.planes  = planes;
-    buf.length    = V4L2_NUM_MAX_PLANES;
-
-    ret = ioctl(device, VIDIOC_QUERYBUF, &buf);
-    if (ret)
-    {
-      VDPAU_DBG("query output buffer");
-      return FALSE;
+    if (fd <= 0) {
+        PRINT("failed to open %s\n", device_path);
+        return 0;
     }
 
-    v4l2_buffer_t *buffer = &v4l2Buffers[i];
 
-    buffer->iNumPlanes = 0;
-    buffer->bQueue = FALSE;
-    for (j = 0; j < V4L2_NUM_MAX_PLANES; j++)
-    {
-      //printf("%s::%s - plane %d %d size %d 0x%08x", i, j, buf.m.planes[j].length,
-      //    buf.m.planes[j].m.userptr);
-      buffer->iSize[j]       = buf.m.planes[j].length;
-      buffer->iBytesUsed[j]  = buf.m.planes[j].bytesused;
-      if(buffer->iSize[j])
-      {
-        buffer->cPlane[j] = mmap(NULL, buf.m.planes[j].length, PROT_READ | PROT_WRITE,
-                       MAP_SHARED, device, buf.m.planes[j].m.mem_offset);
-        if(buffer->cPlane[j] == MAP_FAILED)
-        {
-          VDPAU_DBG("mapping output buffer");
-          return FALSE;
+    PRINT(" got %s\n", device_path);
+
+    return fd;
+}
+
+int v4l2_init_by_name(const char *name) {
+    DIR *dir;
+    struct dirent *ent;
+    int fd = 0;
+
+#define SYS_PATH		"/sys/class/video4linux/"
+#define DEV_PATH		"/dev/"
+
+    if ((dir = opendir(SYS_PATH)) != NULL) {
+        while ((ent = readdir(dir)) != NULL) {
+            FILE *fp;
+            char path[64];
+            char dev_name[64];
+
+            snprintf(path, 64, SYS_PATH "%s/name",
+                    ent->d_name);
+            fp = fopen(path, "r");
+            if (!fp)
+                continue;
+            fgets(dev_name, 32, fp);
+            fclose(fp);
+
+            if (!strstr(dev_name, name))
+                continue;
+
+            snprintf(path, sizeof(path), DEV_PATH "%s",
+                    ent->d_name);
+
+            fd = v4l2_init(path);
+            break;
         }
-        memset(buffer->cPlane[j], 0, buf.m.planes[j].length);
-        buffer->iNumPlanes++;
-      }
+        closedir (dir);
     }
-    buffer->iIndex = i;
-
-    if(queue)
-      QueueBuffer(device, type, memory, buffer);
-  }
-
-  return TRUE;
+    return fd;
 }
 
-v4l2_buffer_t *FreeBuffers(int count, v4l2_buffer_t *v4l2Buffers)
-{
-  int i, j;
+int v4l2_deinit(decoder_ctx_t *dec) {
+    struct v4l2_requestbuffers reqbufs;
+    memset(&reqbufs, 0, sizeof(reqbufs));
+    reqbufs.count = 0;
+    reqbufs.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    reqbufs.memory = V4L2_MEMORY_MMAP;
+    IOCTL_OR_LOG_ERROR(VIDIOC_REQBUFS, &reqbufs);
 
-  if(v4l2Buffers != NULL)
-  {
-    for(i = 0; i < count; i++)
-    {
-      v4l2_buffer_t *buffer = &v4l2Buffers[i];
+    memset(&reqbufs, 0, sizeof(reqbufs));
+    reqbufs.count = 0;
+    reqbufs.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    reqbufs.memory = V4L2_MEMORY_MMAP;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_REQBUFS, &reqbufs);
 
-      for (j = 0; j < buffer->iNumPlanes; j++)
-      {
-        if(buffer->cPlane[j] && buffer->cPlane[j] != MAP_FAILED)
-        {
-          munmap(buffer->cPlane[j], buffer->iSize[j]);
+    munmap(dec->input_buffer, dec->buffer_size);
+
+    close(dec->fd);
+    dec->fd = 0;
+
+    return 0;
+}
+
+int v4l2_reqbufs(decoder_ctx_t *dec) {
+    struct v4l2_requestbuffers reqbufs;
+    memset(&reqbufs, 0, sizeof(reqbufs));
+    reqbufs.count = 1;
+    reqbufs.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    reqbufs.memory = V4L2_MEMORY_MMAP;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_REQBUFS, &reqbufs);
+
+    memset(&reqbufs, 0, sizeof(reqbufs));
+    reqbufs.count = kOutputBufferCnt;
+    reqbufs.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    reqbufs.memory = V4L2_MEMORY_MMAP;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_REQBUFS, &reqbufs);
+
+    return 0;
+}
+
+int v4l2_querybuf(decoder_ctx_t *dec) {
+    struct v4l2_plane planes[VIDEO_MAX_PLANES];
+    struct v4l2_buffer buffer;
+    memset(&buffer, 0, sizeof(buffer));
+    memset(planes, 0, sizeof(planes));
+    buffer.index = 0;
+    buffer.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    buffer.memory = V4L2_MEMORY_MMAP;
+    buffer.m.planes = planes;
+    buffer.length = 1;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_QUERYBUF, &buffer);
+
+    dec->buffer_size = buffer.m.planes[0].length;
+    dec->input_buffer = mmap(NULL, dec->buffer_size,
+            PROT_READ | PROT_WRITE,
+            MAP_SHARED, dec->fd,
+            buffer.m.planes[0].m.mem_offset);
+    if (dec->input_buffer == MAP_FAILED) {
+        PRINT("create input buffer: mmap() failed");
+        return -1;
+    }
+
+    return 0;
+}
+
+int v4l2_expbuf(decoder_ctx_t *dec) {
+    int i;
+
+    for (i = 0; i < kOutputBufferCnt; i++) {
+        struct v4l2_exportbuffer expbuf;
+        memset(&expbuf, 0, sizeof(expbuf));
+        expbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+        expbuf.index = i;
+        expbuf.plane = 0;
+        expbuf.flags = O_CLOEXEC | O_RDWR;
+        IOCTL_OR_ERROR_RETURN(VIDIOC_EXPBUF, &expbuf);
+
+        dec->output[i] = expbuf.fd;
+    }
+
+    return 0;
+}
+
+int v4l2_s_fmt_input(decoder_ctx_t *dec) {
+    struct v4l2_format format;
+    memset(&format, 0, sizeof(format));
+    format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    format.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_H264_SLICE;
+    format.fmt.pix_mp.plane_fmt[0].sizeimage = 4 * 1024 * 1024;
+    format.fmt.pix_mp.num_planes = 1;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_S_FMT, &format);
+
+    return 0;
+}
+
+int v4l2_s_fmt_output(decoder_ctx_t *dec) {
+    struct v4l2_format format;
+    memset(&format, 0, sizeof(format));
+    format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    format.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12;
+    format.fmt.pix_mp.width = dec->width;
+    format.fmt.pix_mp.height = dec->height;
+    format.fmt.pix_mp.num_planes = 1;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_S_FMT, &format);
+
+    dec->coded_width = format.fmt.pix_mp.width;
+    dec->coded_height = format.fmt.pix_mp.height;
+
+    return 0;
+}
+
+int v4l2_streamon(decoder_ctx_t *dec) {
+    __u32 type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_STREAMON, &type);
+
+    type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_STREAMON, &type);
+
+    return 0;
+}
+
+int v4l2_streamoff(decoder_ctx_t *dec) {
+    __u32 type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_STREAMOFF, &type);
+
+    type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_STREAMOFF, &type);
+
+    return 0;
+}
+
+int v4l2_s_ext_ctrls(decoder_ctx_t *dec,
+                     struct v4l2_ext_controls* ext_ctrls) {
+    IOCTL_OR_ERROR_RETURN(VIDIOC_S_EXT_CTRLS, ext_ctrls);
+
+    return 0;
+}
+
+int v4l2_qbuf_input(decoder_ctx_t *dec) {
+    struct v4l2_buffer qbuf;
+    struct v4l2_plane qbuf_planes[VIDEO_MAX_PLANES];
+    memset(&qbuf, 0, sizeof(qbuf));
+    memset(qbuf_planes, 0, sizeof(qbuf_planes));
+    qbuf.index = 0;
+    qbuf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    qbuf.memory = V4L2_MEMORY_MMAP;
+    qbuf.m.planes = qbuf_planes;
+    qbuf.m.planes[0].bytesused = dec->buffer_size;
+    qbuf.length = 1;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_QBUF, &qbuf);
+
+    return 0;
+}
+
+int v4l2_qbuf_output(decoder_ctx_t *dec, int index) {
+    struct v4l2_buffer qbuf;
+    struct v4l2_plane qbuf_planes[VIDEO_MAX_PLANES];
+    memset(&qbuf, 0, sizeof(qbuf));
+    memset(qbuf_planes, 0, sizeof(qbuf_planes));
+    qbuf.index = index;
+    qbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    qbuf.memory = V4L2_MEMORY_MMAP;
+    qbuf.m.planes = qbuf_planes;
+    qbuf.length = 1;
+    IOCTL_OR_ERROR_RETURN(VIDIOC_QBUF, &qbuf);
+
+    return 0;
+}
+
+int v4l2_dqbuf_input(decoder_ctx_t *dec) {
+    struct v4l2_buffer dqbuf;
+    struct v4l2_plane planes[VIDEO_MAX_PLANES];
+    memset(&dqbuf, 0, sizeof(dqbuf));
+    memset(&planes, 0, sizeof(planes));
+    dqbuf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    dqbuf.memory = V4L2_MEMORY_MMAP;
+    dqbuf.m.planes = planes;
+    dqbuf.length = 1;
+    while (ioctl(dec->fd, VIDIOC_DQBUF, &dqbuf) != 0) {
+        if (errno == EAGAIN) {
+            continue;
         }
-      }
+        PRINT("ioctl() failed: VIDIOC_DQBUF");
+        return -1;
     }
-    free(v4l2Buffers);
-  }
-  return NULL;
+
+    return 0;
 }
 
-int DequeueBuffer(int device, enum v4l2_buf_type type, enum v4l2_memory memory)
-{
-  struct v4l2_buffer vbuf;
-  struct v4l2_plane  vplanes[V4L2_NUM_MAX_PLANES];
-  int ret = 0;
+int v4l2_dqbuf_output(decoder_ctx_t *dec) {
+    struct v4l2_buffer dqbuf;
+    struct v4l2_plane planes[VIDEO_MAX_PLANES];
 
-  if(device < 0)
-    return V4L2_ERROR;
+    memset(&dqbuf, 0, sizeof(dqbuf));
+    memset(&planes, 0, sizeof(planes));
+    dqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    dqbuf.memory = V4L2_MEMORY_MMAP;
+    dqbuf.m.planes = planes;
+    dqbuf.length = 1;
 
-  memzero(vplanes);
-  memzero(vbuf);
-  vbuf.type     = type;
-  vbuf.memory   = memory;
-  vbuf.m.planes = vplanes;
-  vbuf.length   = V4L2_NUM_MAX_PLANES;
+    while (ioctl(dec->fd, VIDIOC_DQBUF, &dqbuf) != 0) {
+        if (errno == EAGAIN) {
+            usleep(1000);
+            continue;
+        }
+        PRINT("ioctl() failed: VIDIOC_DQBUF");
+        return -1;
+    }
 
-  ret = ioctl(device, VIDIOC_DQBUF, &vbuf);
-  if (ret) {
-    if (errno == EAGAIN)
-      return -EAGAIN;
-    VDPAU_DBG("dequeue input buffer");
-    return V4L2_ERROR;
-  }
-
-  return vbuf.index;
-}
-
-int QueueBuffer(int device, enum v4l2_buf_type type,
-    enum v4l2_memory memory, v4l2_buffer_t *buffer)
-{
-  struct v4l2_buffer vbuf;
-  struct v4l2_plane  vplanes[V4L2_NUM_MAX_PLANES];
-  int ret = 0;
-  int i;
-
-  if(!buffer || device <0)
-    return V4L2_ERROR;
-
-  memzero(vplanes);
-  memzero(vbuf);
-  vbuf.type     = type;
-  vbuf.memory   = memory;
-  vbuf.index    = buffer->iIndex;
-  vbuf.m.planes = vplanes;
-  vbuf.length   = buffer->iNumPlanes;
-
-  for (i = 0; i < buffer->iNumPlanes; i++)
-  {
-    vplanes[i].m.mem_offset = (unsigned long)buffer->cPlane[i];
-    vplanes[i].m.userptr    = (unsigned long)buffer->cPlane[i];
-    vplanes[i].m.fd         = (unsigned long)buffer->cPlane[i];
-    vplanes[i].length       = buffer->iSize[i];
-    vplanes[i].bytesused    = buffer->iBytesUsed[i];
-  }
-
-  ret = ioctl(device, VIDIOC_QBUF, &vbuf);
-  if (ret)
-  {
-    VDPAU_DBG("queue input buffer");
-    return V4L2_ERROR;
-  }
-  buffer->bQueue = TRUE;
-
-  return buffer->iIndex;
-}
-
-int PollInput(int device, int timeout)
-{
-  int ret = 0;
-  struct pollfd p;
-  p.fd = device;
-  p.events = POLLIN | POLLERR;
-
-  ret = poll(&p, 1, timeout);
-  if (ret < 0)
-  {
-    VDPAU_DBG("polling input");
-    return V4L2_ERROR;
-  }
-  else if (ret == 0)
-  {
-    return V4L2_BUSY;
-  }
-
-  return V4L2_READY;
-}
-
-int PollOutput(int device, int timeout)
-{
-  int ret = 0;
-  struct pollfd p;
-  p.fd = device;
-  p.events = POLLOUT | POLLERR;
-
-  ret = poll(&p, 1, timeout);
-  if (ret < 0)
-  {
-    VDPAU_DBG("polling output");
-    return V4L2_ERROR;
-  }
-  else if (ret == 0)
-  {
-    return V4L2_BUSY;
-  }
-
-  return V4L2_READY;
+    return dqbuf.index;
 }

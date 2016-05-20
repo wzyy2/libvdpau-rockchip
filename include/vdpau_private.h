@@ -32,6 +32,8 @@
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 
+#include <linux/videodev2.h>
+
 #define INTERNAL_YCBCR_FORMAT (VdpYCbCrFormat)0xffff
 #define INTERNAL_RGB8_FORMAT (VdpYCbCrFormat)0xfffe
 
@@ -90,15 +92,48 @@ typedef struct
     VdpPreemptionCallback *preemption_callback;
     void *preemption_callback_context;
 
+    int drm_fd;
+    int use_overlay;
+
     device_egl_t egl;
 } device_ctx_t;
 
+#define DEBUG_DECODE_DUMP (1 << 0)
+#define DEBUG_DECODE_RAW (1 << 1)
+
+typedef struct decoder_ctx_struct
+{
+    uint32_t		width;
+    uint32_t		height;
+    VdpDecoderProfile	profile;
+    device_ctx_t		*device;
+    void			*input_buffer;
+    uint32_t		buffer_size;
+    int32_t			fd;
+    uint32_t		coded_width;
+    uint32_t		coded_height;
+    int32_t			running;
+    int32_t			output[VIDEO_MAX_FRAME];
+    void			*private;
+
+    VdpStatus (*decode)(void *dec,
+            VdpPictureInfo const *info, uint32_t buffer_count,
+            VdpBitstreamBuffer const *buffers,
+            VdpVideoSurface output);
+    int (*get_picture)(void *dec);
+    void (*release_picture)(void *dec, int index);
+    void (*deinit)(void *dec);
+} decoder_ctx_t;
+
 typedef struct
 {
+    decoder_ctx_t *dec;
     device_ctx_t *device;
     uint32_t width, height;
     VdpChromaType chroma_type;
     VdpYCbCrFormat source_format;
+
+    uint32_t fb_id;
     void *private;
 
     GLuint y_tex;
@@ -109,26 +144,6 @@ typedef struct
 
     GLuint framebuffer;
 } video_surface_ctx_t;
-
-#define DEBUG_DECODE_DUMP (1 << 0)
-#define DEBUG_DECODE_RAW (1 << 1)
-
-typedef struct decoder_ctx_struct
-{
-    uint32_t width, height;
-    VdpDecoderProfile profile;
-    device_ctx_t *device;
-    uint8_t *header;
-    uint     header_len;
-    uint8_t *last_header;
-    uint     last_header_len;
-    uint32_t debug;
-
-    VdpStatus (*decode)(struct decoder_ctx_struct *dec, VdpPictureInfo const *info, uint32_t buffer_count,
-                        VdpBitstreamBuffer const *buffers, VdpVideoSurface output);
-
-    void *private;
-} decoder_ctx_t;
 
 typedef struct
 {
@@ -195,25 +210,25 @@ typedef struct
 
 #define max(a, b) \
     ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
-      _a > _b ? _a : _b; })
+     __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
 
 #define min(a, b) \
     ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
-      _a < _b ? _a : _b; })
+     __typeof__ (b) _b = (b); \
+     _a < _b ? _a : _b; })
 
 #define min_nz(a, b) \
-        ({ __typeof__ (a) _a = (a); \
-           __typeof__ (b) _b = (b); \
-           _a < _b ? (_a == 0 ? _b : _a) : (_b == 0 ? _a : _b); })
+    ({ __typeof__ (a) _a = (a); \
+     __typeof__ (b) _b = (b); \
+     _a < _b ? (_a == 0 ? _b : _a) : (_b == 0 ? _a : _b); })
 
-#define VDPAU_ERR(format, ...) fprintf(stderr, "\e[1;31m[VDPAU ODROID ERROR %s:%d]\e[0m " format "\n", __FILE__, __LINE__,  ##__VA_ARGS__)
+#define VDPAU_ERR(format, ...) fprintf(stderr, "\e[1;31m[VDPAU ROCKCHIP ERROR %s:%d]\e[0m " format "\n", __FILE__, __LINE__,  ##__VA_ARGS__)
 
 #ifdef DEBUG
-#define VDPAU_DBG(format, ...) fprintf(stderr, "\e[1;32m[VDPAU ODROID %s:%d]\e[0m " format "\n", __FILE__, __LINE__,  ##__VA_ARGS__)
-#define VDPAU_DBG_ONCE(format, ...) do { static uint8_t __once; if (!__once) { fprintf(stderr, "\e[1;32m[VDPAU ODROID]\e[0m " format "\n", ##__VA_ARGS__); __once = 1; } } while(0)
-#define CHECKEGL { int e=glGetError(); if (e) fprintf(stderr, "\e[1;31m[VDPAU ODROID ERROR %s:%d]\e[0m %d(0x%x)\n", __FILE__, __LINE__, e, e);}
+#define VDPAU_DBG(format, ...) fprintf(stderr, "\e[1;32m[VDPAU ROCKCHIP %s:%d]\e[0m " format "\n", __FILE__, __LINE__,  ##__VA_ARGS__)
+#define VDPAU_DBG_ONCE(format, ...) do { static uint8_t __once; if (!__once) { fprintf(stderr, "\e[1;32m[VDPAU ROCKCHIP]\e[0m " format "\n", ##__VA_ARGS__); __once = 1; } } while(0)
+#define CHECKEGL { int e=glGetError(); if (e) fprintf(stderr, "\e[1;31m[VDPAU ROCKCHIP ERROR %s:%d]\e[0m %d(0x%x)\n", __FILE__, __LINE__, e, e);}
 
 #else
 #define VDPAU_DBG(format, ...)
@@ -221,14 +236,6 @@ typedef struct
 #define CHECKEGL
 
 #endif
-
-/* HW Specific decoder methods */
-void *decoder_open(VdpDecoderProfile profile, uint32_t width, uint32_t height);
-void decoder_close(void *private);
-VdpStatus decoder_decode(void *private, uint32_t buffer_count,
-                    VdpBitstreamBuffer const *buffers, VdpVideoSurface output);
-VdpStatus decoder_get_picture(void *context, int *frame, void ***output);
-VdpStatus decoder_release_picture(void *context, int frame);
 
 int handle_create(void *data);
 void *handle_get(int handle);
@@ -266,8 +273,8 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(VdpVideoSurface surface, VdpYCbCrFo
 VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface, VdpYCbCrFormat source_ycbcr_format, void const *const *source_data, uint32_t const *source_pitches);
 VdpStatus vdp_video_surface_query_capabilities(VdpDevice device, VdpChromaType surface_chroma_type, VdpBool *is_supported, uint32_t *max_width, uint32_t *max_height);
 VdpStatus vdp_video_surface_query_get_put_bits_y_cb_cr_capabilities(VdpDevice device, VdpChromaType surface_chroma_type, VdpYCbCrFormat bits_ycbcr_format, VdpBool *is_supported);
-VdpStatus video_surface_render_picture(video_surface_ctx_t *vs, void **source_data);
-
+VdpStatus video_surface_render_picture(video_surface_ctx_t *vs, void const *const source_data);
+VdpStatus video_surface_put_bits_y_cb_cr(video_surface_ctx_t *vs, VdpYCbCrFormat source_ycbcr_format, void const *const *source_data, uint32_t const *source_pitches);
 VdpStatus vdp_output_surface_create(VdpDevice device, VdpRGBAFormat rgba_format, uint32_t width, uint32_t height, VdpOutputSurface  *surface);
 VdpStatus vdp_output_surface_destroy(VdpOutputSurface surface);
 VdpStatus vdp_output_surface_get_parameters(VdpOutputSurface surface, VdpRGBAFormat *rgba_format, uint32_t *width, uint32_t *height);

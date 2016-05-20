@@ -17,6 +17,9 @@
  *
  */
 
+#include <unistd.h>
+#include <fcntl.h>
+
 #include "vdpau_private.h"
 
 __attribute__((constructor))
@@ -64,21 +67,17 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
     EGLint major;
     EGLint minor;
 
-    VDPAU_DBG ("egl get display");
     dev->egl.display = eglGetDisplay((EGLNativeDisplayType)dev->display);
     if (dev->egl.display == EGL_NO_DISPLAY) {
         VDPAU_DBG ("Could not get EGL display");
         return VDP_STATUS_RESOURCES;
     }
 
-    VDPAU_DBG ("egl initialize");
     if (!eglInitialize(dev->egl.display, &major, &minor)) {
         VDPAU_DBG ("Could not initialize EGL context");
         return VDP_STATUS_RESOURCES;
     }
-    VDPAU_DBG ("Have EGL version: %d.%d", major, minor);
 
-    VDPAU_DBG ("choose config");
     if (!eglChooseConfig(dev->egl.display, configAttribs, &dev->egl.config, 1,
                         &num_configs)) {
         VDPAU_DBG ("Could not choose EGL config");
@@ -91,7 +90,6 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
     }
 
     Window drawable = DefaultRootWindow(dev->display);
-    VDPAU_DBG ("create window surface");
     dev->egl.surface = eglCreateWindowSurface(dev->egl.display, dev->egl.config,
                                      (EGLNativeWindowType)drawable, NULL);
     if (dev->egl.surface == EGL_NO_SURFACE) {
@@ -105,7 +103,6 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
         EGL_NONE
     };
 
-    VDPAU_DBG ("egl create context");
     dev->egl.context = eglCreateContext(dev->egl.display, dev->egl.config,
                                      EGL_NO_CONTEXT, contextAttribs);
     if (dev->egl.context == EGL_NO_CONTEXT) {
@@ -113,7 +110,6 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
         return VDP_STATUS_RESOURCES;
     }
 
-    VDPAU_DBG ("egl make context current");
     if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
                         dev->egl.surface, dev->egl.context)) {
         VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());
@@ -185,6 +181,16 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
     *device = handle;
     *get_proc_address = &vdp_get_proc_address;
 
+    if (getenv("OVERLAY")) {
+#define DRM_PATH "/dev/dri/card0"
+
+        dev->drm_fd = open(DRM_PATH, O_RDWR);
+        if (dev->drm_fd > 0)
+            dev->use_overlay = 1;
+        else
+            VDPAU_ERR("Could not open %s", DRM_PATH);
+    }
+
     return VDP_STATUS_OK;
 }
 
@@ -193,6 +199,9 @@ VdpStatus vdp_device_destroy(VdpDevice device)
     device_ctx_t *dev = handle_get(device);
     if (!dev)
         return VDP_STATUS_INVALID_HANDLE;
+
+    if (dev->drm_fd)
+        close(dev->drm_fd);
 
     gl_delete_shader(&dev->egl.yuvi420_rgb);
     gl_delete_shader(&dev->egl.yuyv422_rgb);
@@ -398,7 +407,7 @@ VdpStatus vdp_get_information_string(char const **information_string)
     if (!information_string)
         return VDP_STATUS_INVALID_POINTER;
 
-    *information_string = "ODROID VDPAU Driver";
+    *information_string = "ROCKCHIP VDPAU Driver";
     return VDP_STATUS_OK;
 }
 

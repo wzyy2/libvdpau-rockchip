@@ -18,6 +18,8 @@
  */
 
 #include <time.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
 
 #include "vdpau_private.h"
 #include "rgba.h"
@@ -82,8 +84,6 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
         VDPAU_DBG ("Could not set EGL context to none %x", eglGetError());
         return VDP_STATUS_RESOURCES;
     }
-
-    VDPAU_DBG ("pq egl init done");
 
     XSetWindowBackground(dev->display, qt->drawable, 0x000102);
 
@@ -211,6 +211,61 @@ VdpStatus vdp_presentation_queue_get_time(VdpPresentationQueue presentation_queu
     return VDP_STATUS_OK;
 }
 
+VdpStatus render_overlay(output_surface_ctx_t *os, queue_ctx_t *q,
+                         int width, int height)
+{
+    drmModeResPtr r;
+    drmModeCrtcPtr crtc;
+    drmModePlaneResPtr pr;
+
+    int x, y, w, h, ret;
+
+    drmSetClientCap(q->device->drm_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+    drmSetClientCap(q->device->drm_fd, DRM_CLIENT_CAP_ATOMIC, 1);
+
+    r = drmModeGetResources(q->device->drm_fd);
+    if (!r || !r->count_crtcs)
+        return VDP_STATUS_ERROR;
+
+    crtc = drmModeGetCrtc(q->device->drm_fd, r->crtcs[0]);
+    if (!crtc)
+        return VDP_STATUS_ERROR;
+
+    pr = drmModeGetPlaneResources(q->device->drm_fd);
+    if (!pr || !pr->count_planes)
+        return VDP_STATUS_ERROR;
+
+    if (getenv("OVERLAY_FULLSCREEN"))
+    {
+        x = crtc->x;
+        y = crtc->y;
+        w = crtc->width;
+        h = crtc->height;
+    }
+    else
+    {
+        Window win;
+
+        XTranslateCoordinates(q->device->display,
+                q->target->drawable,
+                RootWindow(q->device->display, q->device->screen),
+                0, 0, &x, &y, &win);
+        w = width;
+        h = height;
+    }
+
+    ret = drmModeSetPlane(q->device->drm_fd, pr->planes[0],
+            crtc->crtc_id, os->vs->fb_id, 0,
+            x, y, w, h, 0, 0,
+            os->vs->dec->coded_width << 16,
+            os->vs->dec->coded_height << 16);
+
+    if (ret < 0)
+        return VDP_STATUS_ERROR;
+
+    return VDP_STATUS_OK;
+}
+
 VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue,
                                          VdpOutputSurface surface,
                                          uint32_t clip_width,
@@ -228,6 +283,20 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     if (earliest_presentation_time != 0)
         VDPAU_DBG_ONCE("Presentation time not supported");
 
+    if (os->vs && q->device->use_overlay)
+    {
+        VdpStatus ret;
+
+        ret = render_overlay(os, q, clip_width, clip_height);
+        if (ret != VDP_STATUS_OK)
+        {
+            VDPAU_ERR("Could not render overlay");
+            q->device->use_overlay = 0;
+        }
+        else
+            return VDP_STATUS_OK;
+    }
+
     if (!eglMakeCurrent(q->device->egl.display, q->target->surface,
                         q->target->surface, q->target->context)) {
         VDPAU_DBG ("Could not set EGL context to current %x", eglGetError());
@@ -238,7 +307,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     glBindFramebuffer (GL_FRAMEBUFFER, 0);
     CHECKEGL
 
-    if (os->vs)
+    if (os->vs && !q->device->use_overlay)
     {
         /* Do the GLES display of the video */
         GLfloat vVertices[] =
