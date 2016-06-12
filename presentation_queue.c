@@ -18,6 +18,7 @@
  */
 
 #include <time.h>
+#include <drm/drm_fourcc.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
@@ -215,50 +216,90 @@ VdpStatus render_overlay(output_surface_ctx_t *os, queue_ctx_t *q,
                          int width, int height)
 {
     drmModeResPtr r;
-    drmModeCrtcPtr crtc;
     drmModePlaneResPtr pr;
 
-    int x, y, w, h, ret;
+    int x = 0, y = 0, w = 0, h = 0;
+    int ret = -1;
+    int i, j;
+    int plane_id = 0;
+    int crtc = 0;
 
+    Window win;
+
+    /**
+     * get final x y w h
+     */
+    XTranslateCoordinates(q->device->display,
+            q->target->drawable,
+            RootWindow(q->device->display, q->device->screen),
+            0, 0, &x, &y, &win);
+
+    XTranslateCoordinates(q->device->display,
+            q->target->drawable,
+            RootWindow(q->device->display, q->device->screen),
+            width, height, &w, &h, &win);
+
+    /**
+     * enable all planes
+     */
     drmSetClientCap(q->device->drm_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
     drmSetClientCap(q->device->drm_fd, DRM_CLIENT_CAP_ATOMIC, 1);
 
+    /**
+     * get drm res for crtc
+     */
     r = drmModeGetResources(q->device->drm_fd);
     if (!r || !r->count_crtcs)
-        return VDP_STATUS_ERROR;
+        goto err_res;
 
-    crtc = drmModeGetCrtc(q->device->drm_fd, r->crtcs[0]);
-    if (!crtc)
-        return VDP_STATUS_ERROR;
+    /**
+     * find the last available crtc
+     **/
+    for (i = r->count_crtcs; i && !crtc; i --)
+    {
+        drmModeCrtcPtr c = drmModeGetCrtc(q->device->drm_fd, r->crtcs[i - 1]);
+        if (c && c->mode_valid)
+            crtc = i;
+        drmModeFreeCrtc(c);
+    }
 
+    /**
+     * get plane res for plane
+     */
     pr = drmModeGetPlaneResources(q->device->drm_fd);
     if (!pr || !pr->count_planes)
-        return VDP_STATUS_ERROR;
+        goto err_plane_res;
 
-    if (getenv("OVERLAY_FULLSCREEN"))
+    /**
+     * find available plane
+     */
+    for (i = 0; i < pr->count_planes; i++)
     {
-        x = crtc->x;
-        y = crtc->y;
-        w = crtc->width;
-        h = crtc->height;
-    }
-    else
-    {
-        Window win;
-
-        XTranslateCoordinates(q->device->display,
-                q->target->drawable,
-                RootWindow(q->device->display, q->device->screen),
-                0, 0, &x, &y, &win);
-        w = width;
-        h = height;
+        drmModePlanePtr p = drmModeGetPlane(q->device->drm_fd, pr->planes[i]);
+        if (p && p->possible_crtcs == crtc)
+            for (j = 0; j < p->count_formats && !plane_id; j++)
+                if (p->formats[j] == DRM_FORMAT_NV12)
+                    plane_id = pr->planes[i];
+        drmModeFreePlane(p);
     }
 
-    ret = drmModeSetPlane(q->device->drm_fd, pr->planes[0],
-            crtc->crtc_id, os->vs->fb_id, 0,
+    /**
+     * failed to get crtc or plane
+     */
+    if (!crtc || ! plane_id)
+        goto err_overlay;
+
+    ret = drmModeSetPlane(q->device->drm_fd, plane_id,
+            r->crtcs[crtc - 1], os->vs->fb_id, 0,
             x, y, w, h, 0, 0,
             os->vs->dec->coded_width << 16,
             os->vs->dec->coded_height << 16);
+
+err_overlay:
+    drmModeFreePlaneResources(pr);
+err_plane_res:
+    drmModeFreeResources(r);
+err_res:
 
     if (ret < 0)
         return VDP_STATUS_ERROR;
