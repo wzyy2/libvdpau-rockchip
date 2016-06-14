@@ -30,21 +30,16 @@ void log_time(char *msg)
     }
 }
 
-int h264_get_picture(void *p) {
-    decoder_ctx_t *dec = (decoder_ctx_t *)p;
-
-    return h264d_get_picture(dec->private);
-}
-
-void h264_release_picture(void *p, int index) {
-    decoder_ctx_t *dec = (decoder_ctx_t *)p;
+void h264_release_picture(void *p_dec, void *p_vs) {
+    decoder_ctx_t *dec = (decoder_ctx_t *)p_dec;
+    int index;
 
     while ((index = h264d_get_unrefed_picture(dec->private)) >= 0) {
         v4l2_qbuf_output(dec, index);
     }
 }
 
-void h264_submit(decoder_ctx_t* dec, VdpPictureInfoH264 const *info,
+int h264_submit(decoder_ctx_t* dec, VdpPictureInfoH264 const *info,
                  void *nal, size_t nal_size, int submit) {
     int is_frame = 0, i;
     int index;
@@ -57,8 +52,6 @@ void h264_submit(decoder_ctx_t* dec, VdpPictureInfoH264 const *info,
     struct v4l2_ctrl_h264_pps *pps;
     struct v4l2_ext_controls ext_ctrls;
 
-    log_time("start decode");
-
     is_frame = h264d_prepare_data_raw(dec->private, nal,
             nal_size, &num_ctrls, ctrl_ids,
             payloads, payload_sizes);
@@ -67,7 +60,7 @@ void h264_submit(decoder_ctx_t* dec, VdpPictureInfoH264 const *info,
     pps = (struct v4l2_ctrl_h264_pps *)payloads[1];
 
     if (!is_frame || !submit)
-        return;
+        return 0;
 
 #define COPY(param, field) (param->field = info->field)
 #define COPY2(param, field, field2) (param->field = info->field2)
@@ -99,23 +92,30 @@ void h264_submit(decoder_ctx_t* dec, VdpPictureInfoH264 const *info,
 
     free(ext_ctrls.controls);
 
-    v4l2_qbuf_input(dec);
+    log_time("start decode");
 
-    log_time(NULL);
+    v4l2_qbuf_input(dec);
 
     if ((index = v4l2_dqbuf_output(dec)) >= 0) {
         h264d_picture_ready(dec->private, index);
 
         //to workaround plugin bug
-        h264_release_picture(dec, index);
+        h264_release_picture(dec, NULL);
     }
 
     log_time("end decode");
 
     v4l2_dqbuf_input(dec);
+
+    if (index >= 0) {
+        return dec->outputs[index];
+    }
+
+    return 0;
 }
 
-VdpStatus h264_decode(decoder_ctx_t *dec, const VdpPictureInfoH264 *info,
+VdpStatus h264_decode(decoder_ctx_t *dec, video_surface_ctx_t *vs,
+                      const VdpPictureInfoH264 *info,
                       uint32_t buffer_count,
                       VdpBitstreamBuffer const *buffers) {
 
@@ -135,7 +135,7 @@ VdpStatus h264_decode(decoder_ctx_t *dec, const VdpPictureInfoH264 *info,
         nal_size += buffers[i].bitstream_bytes;
     }
 
-    h264_submit(dec, info, nal, nal_size, 1);
+    vs->dma_fd = h264_submit(dec, info, nal, nal_size, 1);
 
     return VDP_STATUS_OK;
 }
@@ -168,11 +168,13 @@ static VdpStatus h264_start(struct decoder_ctx_struct *dec,
     return VDP_STATUS_OK;
 }
 
-static VdpStatus h264_pre_decode(void *p, VdpPictureInfo const *info,
+static VdpStatus h264_pre_decode(void *p_dec, void *p_vs,
+                                 VdpPictureInfo const *info,
                                  uint32_t buffer_count,
                                  VdpBitstreamBuffer const *buffers,
                                  VdpVideoSurface output) {
-    decoder_ctx_t *dec = (decoder_ctx_t *)p;
+    decoder_ctx_t *dec = (decoder_ctx_t *)p_dec;
+    video_surface_ctx_t *vs = (video_surface_ctx_t *)p_vs;
 
     if (!dec->running) {
         h264_start(dec, info);
@@ -182,7 +184,7 @@ static VdpStatus h264_pre_decode(void *p, VdpPictureInfo const *info,
             dec->width, dec->height,
             (VdpPictureInfoH264 *)info);
 
-    return h264_decode(dec,
+    return h264_decode(dec, vs,
             (const VdpPictureInfoH264 *)info,
             buffer_count, buffers);
 }
@@ -207,7 +209,6 @@ void *h264_init(decoder_ctx_t *dec) {
     }
 
     dec->decode = h264_pre_decode;
-    dec->get_picture = h264_get_picture;
     dec->release_picture = h264_release_picture;
     dec->deinit = h264_deinit;
 

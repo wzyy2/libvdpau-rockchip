@@ -161,7 +161,7 @@ int v4l2_expbuf(decoder_ctx_t *dec) {
         expbuf.flags = O_CLOEXEC | O_RDWR;
         IOCTL_OR_ERROR_RETURN(VIDIOC_EXPBUF, &expbuf);
 
-        dec->output[i] = expbuf.fd;
+        dec->outputs[i] = expbuf.fd;
     }
 
     return 0;

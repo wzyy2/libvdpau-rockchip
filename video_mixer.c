@@ -128,9 +128,9 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
         os->rgba.flags |= RGBA_FLAG_NEEDS_CLEAR;
 
     if (os->vs->source_format == INTERNAL_YCBCR_FORMAT) {
-        int index = os->vs->dec->get_picture(os->vs->dec);
+        if (os->vs->dma_fd > 0) {
 
-        if (index >= 0) {
+            os->vs->source_format = VDP_YCBCR_FORMAT_NV12;
             int w = os->vs->dec->coded_width;
             int h = os->vs->dec->coded_height;
 
@@ -140,7 +140,7 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
                 int ret = 0;
 
                 ret = drmPrimeFDToHandle(os->vs->device->drm_fd,
-                        os->vs->dec->output[index], &handle);
+                        os->vs->dma_fd, &handle);
                 if (ret < 0) {
                     VDPAU_ERR("Could not get handle");
                     os->vs->device->use_overlay = 0;
@@ -167,20 +167,19 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
                 size_t size = w * h * 3 / 2;
                 void *buf = mmap(NULL, size,
                         PROT_READ | PROT_WRITE, MAP_SHARED,
-                        os->vs->dec->output[index], 0);
+                        os->vs->dma_fd, 0);
 
                 /* y */
                 buffers[0] = buf;
                 /* uv */
                 buffers[1] = buf + w * h;
-                os->vs->source_format = VDP_YCBCR_FORMAT_NV12;
 
                 video_surface_render_picture(os->vs, buffers);
 
                 munmap(buf, size);
             }
 
-            os->vs->dec->release_picture(os->vs->dec, index);
+            os->vs->dec->release_picture(os->vs->dec, os->vs);
         }
     }
 

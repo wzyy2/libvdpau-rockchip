@@ -113,15 +113,14 @@ typedef struct decoder_ctx_struct
     uint32_t		coded_width;
     uint32_t		coded_height;
     int32_t			running;
-    int32_t			output[VIDEO_MAX_FRAME];
+    int32_t			outputs[VIDEO_MAX_FRAME];
     void			*private;
 
-    VdpStatus (*decode)(void *dec,
+    VdpStatus (*decode)(void *dec, void *vs,
             VdpPictureInfo const *info, uint32_t buffer_count,
             VdpBitstreamBuffer const *buffers,
             VdpVideoSurface output);
-    int (*get_picture)(void *dec);
-    void (*release_picture)(void *dec, int index);
+    void (*release_picture)(void *dec, void *vs);
     void (*deinit)(void *dec);
 } decoder_ctx_t;
 
@@ -134,6 +133,7 @@ typedef struct
     VdpYCbCrFormat source_format;
 
     uint32_t fb_id;
+    uint32_t dma_fd;
     void *private;
 
     GLuint y_tex;

@@ -120,15 +120,17 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
     if (!dec)
         return VDP_STATUS_INVALID_HANDLE;
 
-    video_surface_ctx_t *vid = handle_get(target);
-    if (!vid)
+    video_surface_ctx_t *vs = handle_get(target);
+    if (!vs)
         return VDP_STATUS_INVALID_HANDLE;
 
-    vid->source_format = INTERNAL_YCBCR_FORMAT;
-    vid->private = dec->private;
-    vid->dec = dec;
+    vs->source_format = INTERNAL_YCBCR_FORMAT;
+    vs->private = dec->private;
+    vs->dec = dec;
+    vs->dma_fd = 0;
 
-    return dec->decode(dec, picture_info, bitstream_buffer_count,
+    return dec->decode(dec, vs, picture_info,
+            bitstream_buffer_count,
             bitstream_buffers, target);
 }
 
