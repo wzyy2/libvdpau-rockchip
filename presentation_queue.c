@@ -260,6 +260,15 @@ VdpStatus render_overlay(output_surface_ctx_t *os, queue_ctx_t *q,
         drmModeCrtcPtr c = drmModeGetCrtc(q->device->drm_fd, r->crtcs[i - 1]);
         if (c && c->mode_valid)
             crtc = i;
+
+        if (getenv("OVERLAY_FULLSCREEN"))
+        {
+            x = c->x;
+            y = c->y;
+            w = c->width;
+            h = c->height;
+        }
+
         drmModeFreeCrtc(c);
     }
 
