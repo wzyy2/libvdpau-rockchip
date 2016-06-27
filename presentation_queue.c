@@ -243,7 +243,9 @@ VdpStatus render_overlay(output_surface_ctx_t *os, queue_ctx_t *q,
      * enable all planes
      */
     drmSetClientCap(q->device->drm_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+#ifdef DRM_CLIENT_CAP_ATOMIC
     drmSetClientCap(q->device->drm_fd, DRM_CLIENT_CAP_ATOMIC, 1);
+#endif
 
     /**
      * get drm res for crtc

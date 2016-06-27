@@ -17,6 +17,9 @@
  *
  */
 
+#include <memory.h>
+#include <sys/mman.h>
+
 #include "vdpau_private.h"
 
 VdpStatus vdp_video_surface_create(VdpDevice device,
@@ -143,15 +146,38 @@ VdpStatus vdp_video_surface_get_parameters(VdpVideoSurface surface,
 }
 
 VdpStatus vdp_video_surface_get_bits_y_cb_cr(VdpVideoSurface surface,
-                                             VdpYCbCrFormat destination_ycbcr_format,
-                                             void *const *destination_data,
-                                             uint32_t const *destination_pitches)
+                                             VdpYCbCrFormat dst_format,
+                                             void *const *dst_data,
+                                             uint32_t const *dst_pitches)
 {
     video_surface_ctx_t *vs = handle_get(surface);
-    if (!vs)
+    if (!vs || vs->dma_fd <= 0)
         return VDP_STATUS_INVALID_HANDLE;
 
-    return VDP_STATUS_ERROR;
+    if (dst_format != VDP_YCBCR_FORMAT_YV12)
+        return VDP_STATUS_RESOURCES;
+
+    int w = vs->dec->coded_width;
+    int h = vs->dec->coded_height;
+
+    size_t size = w * h * 3 / 2;
+    void *buf = mmap(NULL, size,
+            PROT_READ | PROT_WRITE, MAP_SHARED,
+            vs->dma_fd, 0);
+
+    if (!buf)
+        return VDP_STATUS_RESOURCES;
+
+    memcpy(dst_data[0], buf, w * h);
+
+    int i;
+    for (i = 0; i < (w * h / 2); i ++) {
+        ((uint8_t*)dst_data[2 - i % 2])[i >> 1] = ((uint8_t*)buf)[w * h + i];
+    }
+
+    munmap(buf, size);
+
+    return VDP_STATUS_OK;
 }
 
 static GLfloat vVertices[] =

@@ -68,7 +68,8 @@ int v4l2_init_by_name(const char *name) {
             fp = fopen(path, "r");
             if (!fp)
                 continue;
-            fgets(dev_name, 32, fp);
+            if (!fgets(dev_name, 32, fp))
+                dev_name[0] = '\0';
             fclose(fp);
 
             if (!strstr(dev_name, name))
