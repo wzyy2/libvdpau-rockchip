@@ -7,7 +7,7 @@ SRC = device.c presentation_queue.c surface_output.c surface_video.c \
 CFLAGS ?= -Wall -O3 -g -I ./include -I/usr/include/libdrm
 LDFLAGS ?=
 LIBS ?= -lrt -lm -lX11 -lrkdec-h264d -ldrm -lEGL -lGLESv2
-CC ?= gcc
+CC = $(CROSS_COMPILER)gcc
 
 MAKEFLAGS += -rR --no-print-directory
 
@@ -21,7 +21,7 @@ DEP = $(addsuffix .d,$(basename $(SRC)))
 MODULEDIR = $(shell pkg-config --variable=moduledir vdpau)
 
 ifeq ($(MODULEDIR),)
-MODULEDIR=/usr/lib/vdpau
+MODULEDIR=/usr/lib/arm-linux-gnueabihf/vdpau
 endif
 
 .PHONY: clean all install
