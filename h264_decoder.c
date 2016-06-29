@@ -14,14 +14,23 @@
 #define DEV_NAME_RK3288_NEW	    "rockchip-vpu-dec"
 #define DEV_NAME_RK3288_LEGACY	"rk3288-vpu-dec"
 
+#define LOG(fmt, args...) { \
+        FILE *fp = fopen("/tmp/video.log", "a"); \
+        if (fp) { \
+                    fprintf(fp, fmt, ## args); \
+                    fclose(fp); \
+                } \
+}
+
+#define LOG_DEINIT()
+
+#define LOG_INIT()
+
 struct timeval last_tv;
 struct timeval tv;
 
 void log_time(char *msg)
 {
-#define TIME_TO_MS(tv) (tv.tv_sec * 1000 + tv.tv_usec / 1000)
-#define DURATION(tv1, tv2) (TIME_TO_MS(tv2) - TIME_TO_MS(tv1))
-
     if (getenv("LOG_TIME")) {
         gettimeofday(&tv, NULL);
         if (msg)
@@ -50,7 +59,11 @@ int h264_submit(decoder_ctx_t* dec, VdpPictureInfoH264 const *info,
 
     struct v4l2_ctrl_h264_sps *sps;
     struct v4l2_ctrl_h264_pps *pps;
+    struct v4l2_ctrl_h264_decode_param *dec_param;
     struct v4l2_ext_controls ext_ctrls;
+
+    encode_statistics_p statistics = &dec->statistics;
+    statistics->stream_bytes += nal_size;
 
     is_frame = h264d_prepare_data_raw(dec->private, nal,
             nal_size, &num_ctrls, ctrl_ids,
@@ -58,6 +71,7 @@ int h264_submit(decoder_ctx_t* dec, VdpPictureInfoH264 const *info,
 
     sps = (struct v4l2_ctrl_h264_sps *)payloads[0];
     pps = (struct v4l2_ctrl_h264_pps *)payloads[1];
+    dec_param = (struct v4l2_ctrl_h264_decode_param *)payloads[4];
 
     if (!is_frame || !submit)
         return 0;
@@ -101,6 +115,36 @@ int h264_submit(decoder_ctx_t* dec, VdpPictureInfoH264 const *info,
 
         //to workaround plugin bug
         h264_release_picture(dec, NULL);
+    }
+
+    statistics->frames ++;
+    statistics->non_intra_frames ++;
+
+    if (dec_param->idr_pic_flag) {
+        if (statistics->intra_ratio != statistics->non_intra_frames) {
+            statistics->intra_ratio = statistics->non_intra_frames;
+            LOG("intra_ratio:%d\n", statistics->intra_ratio);
+        }
+        statistics->non_intra_frames = 0;
+    }
+
+    struct timeval tm;
+    gettimeofday(&tm, NULL);
+    if (tm.tv_sec != statistics->tm.tv_sec) {
+        int duration = DURATION(statistics->tm, tm);
+
+        if (statistics->fps != statistics->frames) {
+            statistics->fps = statistics->frames;
+            LOG("fps:%d\n", statistics->fps * 1000 / duration);
+        }
+        if (statistics->bitrate != statistics->stream_bytes) {
+            statistics->bitrate = statistics->stream_bytes;
+            LOG("bitrate(KB/S):%d\n",
+                    (statistics->bitrate >> 10) * 1000 / duration);
+        }
+        statistics->frames = 0;
+        statistics->stream_bytes = 0;
+        statistics->tm = tm;
     }
 
     log_time("end decode");
@@ -164,6 +208,10 @@ static VdpStatus h264_start(struct decoder_ctx_struct *dec,
     }
 
     dec->running = 1;
+
+    LOG("resolution:%dx%d\n",
+            dec->width, dec->height);
+    gettimeofday(&dec->statistics.tm, NULL);
 
     return VDP_STATUS_OK;
 }

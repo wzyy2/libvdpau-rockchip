@@ -34,6 +34,9 @@
 
 #include <linux/videodev2.h>
 
+#define TIME_TO_MS(tv) (tv.tv_sec * 1000 + tv.tv_usec / 1000)
+#define DURATION(tv1, tv2) (TIME_TO_MS(tv2) - TIME_TO_MS(tv1))
+
 #define INTERNAL_YCBCR_FORMAT (VdpYCbCrFormat)0xffff
 #define INTERNAL_RGB8_FORMAT (VdpYCbCrFormat)0xfffe
 
@@ -101,20 +104,33 @@ typedef struct
 #define DEBUG_DECODE_DUMP (1 << 0)
 #define DEBUG_DECODE_RAW (1 << 1)
 
+typedef struct {
+    int             stream_bytes;
+    int             frames;
+    struct timeval  tm;
+
+    int             fps;
+    int             bitrate;
+    int             intra_ratio;
+    int             non_intra_frames;
+} encode_statistics_t, *encode_statistics_p;
+
 typedef struct decoder_ctx_struct
 {
-    uint32_t		width;
-    uint32_t		height;
-    VdpDecoderProfile	profile;
-    device_ctx_t		*device;
-    void			*input_buffer;
-    uint32_t		buffer_size;
-    int32_t			fd;
-    uint32_t		coded_width;
-    uint32_t		coded_height;
-    int32_t			running;
-    int32_t			outputs[VIDEO_MAX_FRAME];
-    void			*private;
+    uint32_t            width;
+    uint32_t            height;
+    VdpDecoderProfile   profile;
+    device_ctx_t        *device;
+    void                *input_buffer;
+    uint32_t            buffer_size;
+    int32_t             fd;
+    uint32_t            coded_width;
+    uint32_t            coded_height;
+    int32_t             running;
+    int32_t             outputs[VIDEO_MAX_FRAME];
+    encode_statistics_t statistics;
+
+    void                *private;
 
     VdpStatus (*decode)(void *dec, void *vs,
             VdpPictureInfo const *info, uint32_t buffer_count,
