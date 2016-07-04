@@ -300,7 +300,7 @@ VdpStatus render_overlay(output_surface_ctx_t *os, queue_ctx_t *q,
     if (!crtc || ! plane_id)
         goto err_overlay;
 
-    ret = drmModeSetPlane(q->device->drm_fd, plane_id,
+    ret = drmModeSetPlane(q->device->drm_ctl_fd, plane_id,
             r->crtcs[crtc - 1], os->vs->fb_id, 0,
             x, y, w, h, 0, 0,
             os->vs->dec->coded_width << 16,

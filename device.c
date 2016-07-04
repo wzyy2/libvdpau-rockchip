@@ -183,12 +183,18 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
 
     if (getenv("OVERLAY")) {
 #define DRM_PATH "/dev/dri/card0"
+#define DRM_CTL_PATH "/dev/dri/controlD64"
 
         dev->drm_fd = open(DRM_PATH, O_RDWR);
-        if (dev->drm_fd > 0)
-            dev->use_overlay = 1;
-        else
+        if (dev->drm_fd <= 0)
             VDPAU_ERR("Could not open %s", DRM_PATH);
+        else {
+            dev->drm_ctl_fd = open(DRM_CTL_PATH, O_RDWR);
+            if (dev->drm_ctl_fd <= 0)
+                VDPAU_ERR("Could not open %s", DRM_CTL_PATH);
+            else
+                dev->use_overlay = 1;
+        }
     }
 
     return VDP_STATUS_OK;

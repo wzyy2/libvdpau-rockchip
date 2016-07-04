@@ -96,6 +96,7 @@ typedef struct
     void *preemption_callback_context;
 
     int drm_fd;
+    int drm_ctl_fd;
     int use_overlay;
 
     device_egl_t egl;
