@@ -51,7 +51,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device,
         return VDP_STATUS_RESOURCES;
 
     qt->device = dev;
-    qt->drawable = drawable;
+    qt->drawable = dev->drawable = drawable;
 
     qt->surface = eglCreateWindowSurface(dev->egl.display, dev->egl.config,
                                      (EGLNativeWindowType)qt->drawable, NULL);
@@ -212,13 +212,14 @@ VdpStatus vdp_presentation_queue_get_time(VdpPresentationQueue presentation_queu
     return VDP_STATUS_OK;
 }
 
-VdpStatus render_overlay(output_surface_ctx_t *os, queue_ctx_t *q,
-                         int width, int height)
+VdpStatus render_overlay(device_ctx_t *dev, int fb_id, int fullscreen,
+                            int src_w, int src_h, int clip_w, int clip_h)
 {
     drmModeResPtr r;
     drmModePlaneResPtr pr;
 
-    int x = 0, y = 0, w = 0, h = 0;
+    int crtc_x = 0, crtc_y = 0, crtc_w = 0, crtc_h = 0;
+    int old_fb = 0;
     int ret = -1;
     int i, j;
     int plane_id = 0;
@@ -227,30 +228,17 @@ VdpStatus render_overlay(output_surface_ctx_t *os, queue_ctx_t *q,
     Window win;
 
     /**
-     * get final x y w h
-     */
-    XTranslateCoordinates(q->device->display,
-            q->target->drawable,
-            RootWindow(q->device->display, q->device->screen),
-            0, 0, &x, &y, &win);
-
-    XTranslateCoordinates(q->device->display,
-            q->target->drawable,
-            RootWindow(q->device->display, q->device->screen),
-            width, height, &w, &h, &win);
-
-    /**
      * enable all planes
      */
-    drmSetClientCap(q->device->drm_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+    drmSetClientCap(dev->drm_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
 #ifdef DRM_CLIENT_CAP_ATOMIC
-    drmSetClientCap(q->device->drm_fd, DRM_CLIENT_CAP_ATOMIC, 1);
+    drmSetClientCap(dev->drm_fd, DRM_CLIENT_CAP_ATOMIC, 1);
 #endif
 
     /**
      * get drm res for crtc
      */
-    r = drmModeGetResources(q->device->drm_fd);
+    r = drmModeGetResources(dev->drm_fd);
     if (!r || !r->count_crtcs)
         goto err_res;
 
@@ -259,25 +247,22 @@ VdpStatus render_overlay(output_surface_ctx_t *os, queue_ctx_t *q,
      **/
     for (i = r->count_crtcs; i && !crtc; i --)
     {
-        drmModeCrtcPtr c = drmModeGetCrtc(q->device->drm_fd, r->crtcs[i - 1]);
+        drmModeCrtcPtr c = drmModeGetCrtc(dev->drm_fd, r->crtcs[i - 1]);
         if (c && c->mode_valid)
-            crtc = i;
-
-        if (getenv("OVERLAY_FULLSCREEN"))
         {
-            x = c->x;
-            y = c->y;
-            w = c->width;
-            h = c->height;
+            crtc = i;
+            crtc_x = c->x;
+            crtc_y = c->y;
+            crtc_w = c->width;
+            crtc_h = c->height;
         }
-
         drmModeFreeCrtc(c);
     }
 
     /**
      * get plane res for plane
      */
-    pr = drmModeGetPlaneResources(q->device->drm_fd);
+    pr = drmModeGetPlaneResources(dev->drm_fd);
     if (!pr || !pr->count_planes)
         goto err_plane_res;
 
@@ -286,11 +271,14 @@ VdpStatus render_overlay(output_surface_ctx_t *os, queue_ctx_t *q,
      */
     for (i = 0; i < pr->count_planes; i++)
     {
-        drmModePlanePtr p = drmModeGetPlane(q->device->drm_fd, pr->planes[i]);
+        drmModePlanePtr p = drmModeGetPlane(dev->drm_fd, pr->planes[i]);
         if (p && p->possible_crtcs == crtc)
             for (j = 0; j < p->count_formats && !plane_id; j++)
                 if (p->formats[j] == DRM_FORMAT_NV12)
+                {
                     plane_id = pr->planes[i];
+                    old_fb = p->fb_id;
+                }
         drmModeFreePlane(p);
     }
 
@@ -300,12 +288,35 @@ VdpStatus render_overlay(output_surface_ctx_t *os, queue_ctx_t *q,
     if (!crtc || ! plane_id)
         goto err_overlay;
 
-    ret = drmModeSetPlane(q->device->drm_ctl_fd, plane_id,
-            r->crtcs[crtc - 1], os->vs->fb_id, 0,
-            x, y, w, h, 0, 0,
-            os->vs->dec->coded_width << 16,
-            os->vs->dec->coded_height << 16);
+    if (!fullscreen)
+    {
+        /**
+         * get window's x y w h
+         */
+        XTranslateCoordinates(dev->display,
+                dev->drawable,
+                RootWindow(dev->display, dev->screen),
+                0, 0, &crtc_x, &crtc_y, &win);
 
+        XTranslateCoordinates(dev->display,
+                dev->drawable,
+                RootWindow(dev->display, dev->screen),
+                clip_w, clip_h, &crtc_w, &crtc_h, &win);
+    }
+
+    ret = drmModeSetPlane(dev->drm_ctl_fd, plane_id,
+            r->crtcs[crtc - 1], fb_id, 0,
+            crtc_x, crtc_y, crtc_w, crtc_h,
+            0, 0, (src_w ? src_w : crtc_w) << 16,
+            (src_h ? src_h : crtc_h) << 16);
+
+    if (dev->saved_fb < 0)
+    {
+        dev->saved_fb = old_fb;
+        VDPAU_DBG ("store fb:%d", old_fb);
+    } else {
+        drmModeRmFB(dev->drm_ctl_fd, old_fb);
+    }
 err_overlay:
     drmModeFreePlaneResources(pr);
 err_plane_res:
@@ -314,6 +325,15 @@ err_res:
 
     if (ret < 0)
         return VDP_STATUS_ERROR;
+
+    return VDP_STATUS_OK;
+}
+
+VdpStatus close_overlay(device_ctx_t *dev)
+{
+    VDPAU_DBG ("restore fb:%d", dev->saved_fb);
+    render_overlay(dev, dev->saved_fb, 1, 0, 0, 0, 0);
+    dev->dsp_mode = NO_OVERLAY;
 
     return VDP_STATUS_OK;
 }
@@ -335,15 +355,18 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     if (earliest_presentation_time != 0)
         VDPAU_DBG_ONCE("Presentation time not supported");
 
-    if (os->vs && q->device->use_overlay)
+    if (os->vs && q->device->dsp_mode != NO_OVERLAY)
     {
         VdpStatus ret;
 
-        ret = render_overlay(os, q, clip_width, clip_height);
+        ret = render_overlay(q->device, os->vs->fb_id,
+                q->device->dsp_mode == OVERLAY_FULLSCREEN,
+                os->vs->dec->coded_width, os->vs->dec->coded_height,
+                clip_width, clip_height);
         if (ret != VDP_STATUS_OK)
         {
             VDPAU_ERR("Could not render overlay");
-            q->device->use_overlay = 0;
+            q->device->dsp_mode = NO_OVERLAY;
         }
         else
             return VDP_STATUS_OK;
@@ -359,7 +382,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     glBindFramebuffer (GL_FRAMEBUFFER, 0);
     CHECKEGL
 
-    if (os->vs && !q->device->use_overlay)
+    if (os->vs && q->device->dsp_mode == NO_OVERLAY)
     {
         /* Do the GLES display of the video */
         GLfloat vVertices[] =

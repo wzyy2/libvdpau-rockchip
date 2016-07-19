@@ -81,6 +81,8 @@ VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
     if (!dec)
         return VDP_STATUS_INVALID_HANDLE;
 
+    close_overlay(dec->device);
+
     dec->deinit(dec);
 
     handle_destroy(decoder);

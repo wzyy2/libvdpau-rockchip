@@ -88,6 +88,12 @@ typedef struct
     shader_ctx_t brswap;
 } device_egl_t;
 
+enum display_mode {
+    NO_OVERLAY,
+    OVERLAY,
+    OVERLAY_FULLSCREEN,
+};
+
 typedef struct
 {
     Display *display;
@@ -97,7 +103,9 @@ typedef struct
 
     int drm_fd;
     int drm_ctl_fd;
-    int use_overlay;
+    int saved_fb;
+    enum display_mode dsp_mode;
+    Drawable drawable;
 
     device_egl_t egl;
 } device_ctx_t;
@@ -271,6 +279,9 @@ VdpStatus vdp_get_proc_address(VdpDevice device, VdpFuncId function_id, void **f
 char const *vdp_get_error_string(VdpStatus status);
 VdpStatus vdp_get_api_version(uint32_t *api_version);
 VdpStatus vdp_get_information_string(char const **information_string);
+
+VdpStatus render_overlay(device_ctx_t *dev, int fb_id, int fullscreen, int src_w, int src_h, int clip_w, int clip_h);
+VdpStatus close_overlay(device_ctx_t *dev);
 
 VdpStatus vdp_presentation_queue_target_create_x11(VdpDevice device, Drawable drawable, VdpPresentationQueueTarget *target);
 VdpStatus vdp_presentation_queue_target_destroy(VdpPresentationQueueTarget presentation_queue_target);

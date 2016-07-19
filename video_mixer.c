@@ -134,7 +134,7 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
             int w = os->vs->dec->coded_width;
             int h = os->vs->dec->coded_height;
 
-            if (os->vs->device->use_overlay) {
+            if (os->vs->device->dsp_mode != NO_OVERLAY) {
                 uint32_t handles[4], pitches[4], offsets[4];
                 uint32_t handle = 0;
                 int ret = 0;
@@ -143,7 +143,7 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
                         os->vs->dma_fd, &handle);
                 if (ret < 0) {
                     VDPAU_ERR("Could not get handle");
-                    os->vs->device->use_overlay = 0;
+                    os->vs->device->dsp_mode = NO_OVERLAY;
                 }
 
                 handles[0] = handle;
@@ -158,11 +158,11 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
                         &os->vs->fb_id, 0);
                 if (ret < 0) {
                     VDPAU_ERR("Could not add fb");
-                    os->vs->device->use_overlay = 0;
+                    os->vs->device->dsp_mode = NO_OVERLAY;
                 }
             }
 
-            if (!os->vs->device->use_overlay) {
+            if (os->vs->device->dsp_mode == NO_OVERLAY) {
                 void *buffers[2];
                 size_t size = w * h * 3 / 2;
                 void *buf = mmap(NULL, size,
