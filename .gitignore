@@ -1,3 +1,5 @@
 *.d
 *.o
 *.so*
+*.pro.user*
+*.DS_Store
