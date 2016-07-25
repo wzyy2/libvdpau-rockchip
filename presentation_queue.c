@@ -351,6 +351,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
                                          uint32_t clip_height,
                                          VdpTime earliest_presentation_time)
 {
+
     queue_ctx_t *q = handle_get(presentation_queue);
     if (!q)
         return VDP_STATUS_INVALID_HANDLE;
@@ -391,13 +392,30 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     CHECKEGL
     */
 
+
+
     if (os->vs && q->device->dsp_mode == NO_OVERLAY)
     {
+        /* Do the GLES display of the video */
+        GLfloat vVertices[] =
+        {
+            -1.0f, -1.0f,
+            0.0f, 0.0f,
+
+            1.0f, -1.0f,
+            1.0f, 0.0f,
+
+            1.0f, 1.0f,
+            1.0f, 1.0f,
+
+            -1.0f, 1.0f,
+            0.0f, 1.0f,
+        };
+        GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
+
         video_surface_ctx_t *vs = os->vs;
 
-        shader_ctx_t * shader = &vs->device->egl.yuvnv12_rgb;
-        shader_init(vs->width, vs->height, vs->framebuffer, shader);
-
+        shader_ctx_t * shader = &vs->device->egl.oes;
 
         EGLint attrs[] = {
             EGL_WIDTH,                     0, EGL_HEIGHT,                    0,
@@ -427,12 +445,30 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
         glClear (GL_COLOR_BUFFER_BIT);
         CHECKEGL
 
+        glUseProgram (shader->program);
+        CHECKEGL
+
         glViewport(os->video_dst_rect.x0, os->video_dst_rect.y0,
                 os->video_dst_rect.x1-os->video_dst_rect.x0,
                 os->video_dst_rect.y1-os->video_dst_rect.y0);
-        shader = &vs->device->egl.oes;
-        glUseProgram (shader->program);
-        CHECKEGL
+
+CHECKEGL
+
+
+                        glVertexAttribPointer (shader->position_loc, 2, GL_FLOAT,
+                            GL_FALSE, 4 * sizeof (GLfloat), vVertices);
+                        CHECKEGL
+                        glEnableVertexAttribArray (shader->position_loc);
+                        CHECKEGL
+
+                        glVertexAttribPointer (shader->texcoord_loc, 2, GL_FLOAT,
+                            GL_FALSE, 4 * sizeof (GLfloat), &vVertices[2]);
+                        CHECKEGL
+                        glEnableVertexAttribArray (shader->texcoord_loc);
+                        CHECKEGL
+
+                        glActiveTexture(GL_TEXTURE0);
+                        CHECKEGL
 
 
   int tex_id = 0;
@@ -458,6 +494,8 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     glUniform1i (shader->texture[0], 0);
      CHECKEGL
 
+
+    //glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     CHECKEGL
     glUseProgram(0);
