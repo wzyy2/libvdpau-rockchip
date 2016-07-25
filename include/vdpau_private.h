@@ -49,7 +49,8 @@ typedef enum
     SHADER_YUV8444_RGB,
     SHADER_VUY8444_RGB,
     SHADER_COPY,
-    SHADER_BRSWAP_COPY
+    SHADER_BRSWAP_COPY,
+    SHADER_OES,
 } shader_type_t;
 
 typedef struct
@@ -86,6 +87,7 @@ typedef struct
     shader_ctx_t vuy8444_rgb;
     shader_ctx_t copy;
     shader_ctx_t brswap;
+    shader_ctx_t oes;
 } device_egl_t;
 
 enum display_mode {
@@ -301,7 +303,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(VdpVideoSurface surface, VdpYCbCrFo
 VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface, VdpYCbCrFormat source_ycbcr_format, void const *const *source_data, uint32_t const *source_pitches);
 VdpStatus vdp_video_surface_query_capabilities(VdpDevice device, VdpChromaType surface_chroma_type, VdpBool *is_supported, uint32_t *max_width, uint32_t *max_height);
 VdpStatus vdp_video_surface_query_get_put_bits_y_cb_cr_capabilities(VdpDevice device, VdpChromaType surface_chroma_type, VdpYCbCrFormat bits_ycbcr_format, VdpBool *is_supported);
-VdpStatus video_surface_render_picture(video_surface_ctx_t *vs, void const *const source_data);
+VdpStatus video_surface_render_picture(video_surface_ctx_t *vs, uint32_t dma_fd);
 VdpStatus video_surface_put_bits_y_cb_cr(video_surface_ctx_t *vs, VdpYCbCrFormat source_ycbcr_format, void const *const *source_data, uint32_t const *source_pitches);
 VdpStatus vdp_output_surface_create(VdpDevice device, VdpRGBAFormat rgba_format, uint32_t width, uint32_t height, VdpOutputSurface  *surface);
 VdpStatus vdp_output_surface_destroy(VdpOutputSurface surface);

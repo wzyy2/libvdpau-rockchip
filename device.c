@@ -35,6 +35,7 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
                                     VdpDevice *device,
                                     VdpGetProcAddress **get_proc_address)
 {
+    printf("11111111111\n");
     if (!display || !device || !get_proc_address)
         return VDP_STATUS_INVALID_POINTER;
 
@@ -166,6 +167,13 @@ VdpStatus vdp_imp_device_create_x11(Display *display,
     }
 
     ret = gl_init_shader (&dev->egl.brswap, SHADER_BRSWAP_COPY);
+    if (ret < 0) {
+        VDPAU_DBG ("Could not initialize shader: %d", ret);
+        free(dev);
+        return VDP_STATUS_RESOURCES;
+    }
+
+    ret = gl_init_shader (&dev->egl.oes, SHADER_OES);
     if (ret < 0) {
         VDPAU_DBG ("Could not initialize shader: %d", ret);
         free(dev);

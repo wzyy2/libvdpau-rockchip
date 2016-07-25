@@ -21,8 +21,7 @@
 #include <sys/mman.h>
 #include <time.h>
 #include <libdrm/drm_fourcc.h>
-#include <xf86drm.h>
-#include <xf86drmMode.h>
+
 
 #include "vdpau_private.h"
 #include "rgba.h"
@@ -174,7 +173,7 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
                 /* uv */
                 buffers[1] = buf + w * h;
 
-                video_surface_render_picture(os->vs, buffers);
+                video_surface_render_picture(os->vs, os->vs->dma_fd);
 
                 munmap(buf, size);
             }

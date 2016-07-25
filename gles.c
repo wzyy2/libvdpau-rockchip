@@ -171,6 +171,16 @@ static const char* fragment_shaders[] = {
     "uniform sampler2D s_tex;"
     "void main(void) {"
     "   gl_FragColor = texture2D(s_tex, vTexcoord).bgra;"
+    "}",
+
+    /* OES_EGL */
+    "#extension GL_OES_EGL_image_external : enable\n"
+    "precision mediump float;"
+    "varying vec2 vTexcoord;"
+    "uniform samplerExternalOES tex_external;"
+    "void main() {"
+    "  vec4 color = texture2D(tex_external, vTexcoord);"
+    "  gl_FragColor = color;"
     "}"
 
 };
@@ -337,6 +347,10 @@ gl_init_shader (shader_ctx_t *shader,
             shader->texture[0] = glGetUniformLocation(shader->program, "s_tex");
             CHECKEGL
             break;
+        case SHADER_OES:
+            shader->texture[0] = glGetUniformLocation(shader->program, "tex_external");
+        CHECKEGL
+        break;
     }
     return 0;
 }

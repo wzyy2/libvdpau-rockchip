@@ -22,6 +22,12 @@
 
 #include "vdpau_private.h"
 
+#include <xf86drm.h>
+#include <xf86drmMode.h>
+#include <EGL/eglext.h>
+#include <GLES2/gl2ext.h>
+#include <libdrm/drm_fourcc.h>
+
 VdpStatus vdp_video_surface_create(VdpDevice device,
                                    VdpChromaType chroma_type,
                                    uint32_t width,
@@ -459,10 +465,96 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(VdpVideoSurface surface,
 }
 
 VdpStatus video_surface_render_picture(video_surface_ctx_t *vs,
-                                       void const *const source_data)
+                                       uint32_t dma_fd)
 {
-    return video_surface_put_bits_y_cb_cr(vs, vs->source_format,
-                                          source_data, NULL);
+    vs->y_tex = dma_fd;
+    return VDP_STATUS_OK;
+
+
+//    shader_ctx_t *shader;
+//    device_ctx_t *dev = vs->device;
+
+//    if (!eglMakeCurrent(dev->egl.display, dev->egl.surface,
+//                        dev->egl.surface, dev->egl.context)) {
+//        VDPAU_ERR("Could not set EGL context to current %x", eglGetError());
+//        return VDP_STATUS_ERROR;
+//    }
+
+//    EGLint attrs[] = {
+//        EGL_WIDTH,                     0, EGL_HEIGHT,                    0,
+//        EGL_LINUX_DRM_FOURCC_EXT,      0, EGL_DMA_BUF_PLANE0_FD_EXT,     0,
+//        EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0, EGL_DMA_BUF_PLANE0_PITCH_EXT,  0,
+//        EGL_DMA_BUF_PLANE1_FD_EXT,     0, EGL_DMA_BUF_PLANE1_OFFSET_EXT, 0,
+//        EGL_DMA_BUF_PLANE1_PITCH_EXT,  0, EGL_YUV_COLOR_SPACE_HINT_EXT, 0,
+//        EGL_SAMPLE_RANGE_HINT_EXT, 0, EGL_NONE, };
+
+//    attrs[1] = vs->width;
+//    attrs[3] = vs->height;
+//    attrs[5] = DRM_FORMAT_NV12;
+//    attrs[7]  = dma_fd;
+//    attrs[9]  = 0;
+//    attrs[11] = vs->width;
+
+//    attrs[13] = dma_fd;
+//    attrs[15] = vs->width * vs->height;
+//    attrs[17] = vs->width;
+//    attrs[19] = EGL_ITU_REC601_EXT;
+//    attrs[21] = EGL_YUV_NARROW_RANGE_EXT;
+
+//    EGLImageKHR egl_image = eglCreateImageKHR(
+//           dev->egl.display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attrs);
+//    if (egl_image == EGL_NO_IMAGE_KHR)
+//        printf("jeffy, failed egl image\n");
+
+//    shader = &vs->device->egl.oes;
+
+//    glBindFramebuffer (GL_FRAMEBUFFER, vs->framebuffer);
+//    CHECKEGL
+//    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER) ;
+//    if(status != GL_FRAMEBUFFER_COMPLETE) {
+//        VDPAU_DBG("failed to make complete framebuffer object %x", status);
+//    }
+
+//    glUseProgram (shader->program);
+//    CHECKEGL
+
+//    glViewport(0, 0, vs->height, vs->width);
+//    CHECKEGL
+
+//    glClear (GL_COLOR_BUFFER_BIT);
+//    CHECKEGL
+
+//    /* y component */
+//            glActiveTexture(GL_TEXTURE0);
+//    CHECKEGL
+//            glBindTexture (GL_TEXTURE_2D, vs->y_tex);
+//    CHECKEGL
+//            glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, egl_image);
+//    CHECKEGL
+//            glUniform1i (shader->texture[0], 0);
+//    CHECKEGL
+
+//            glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
+//            //glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+//    CHECKEGL
+
+//            glUseProgram(0);
+//            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+//    if (!eglMakeCurrent(vs->device->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+//        VDPAU_ERR("Could not set EGL context to none %x", eglGetError());
+//        return VDP_STATUS_ERROR;
+//    }
+
+//    return VDP_STATUS_OK;
+
+//chroma:
+//    if (!eglMakeCurrent(vs->device->egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+//        VDPAU_ERR("Could not set EGL context to none %x", eglGetError());
+//    }
+
+//    return VDP_STATUS_INVALID_CHROMA_TYPE;
+
 }
 
 VdpStatus vdp_video_surface_query_capabilities(VdpDevice device,

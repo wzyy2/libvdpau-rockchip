@@ -25,6 +25,13 @@
 #include "vdpau_private.h"
 #include "rgba.h"
 
+#include <xf86drm.h>
+#include <xf86drmMode.h>
+#include <EGL/eglext.h>
+#include <GLES2/gl2ext.h>
+#include <libdrm/drm_fourcc.h>
+
+
 static uint64_t get_time(void)
 {
     struct timespec tp;
@@ -379,11 +386,90 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     }
     CHECKEGL
 
+        /*
     glBindFramebuffer (GL_FRAMEBUFFER, 0);
     CHECKEGL
+    */
 
     if (os->vs && q->device->dsp_mode == NO_OVERLAY)
     {
+        video_surface_ctx_t *vs = os->vs;
+
+        shader_ctx_t * shader = &vs->device->egl.yuvnv12_rgb;
+        shader_init(vs->width, vs->height, vs->framebuffer, shader);
+
+
+        EGLint attrs[] = {
+            EGL_WIDTH,                     0, EGL_HEIGHT,                    0,
+            EGL_LINUX_DRM_FOURCC_EXT,      0, EGL_DMA_BUF_PLANE0_FD_EXT,     0,
+            EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0, EGL_DMA_BUF_PLANE0_PITCH_EXT,  0,
+            EGL_DMA_BUF_PLANE1_FD_EXT,     0, EGL_DMA_BUF_PLANE1_OFFSET_EXT, 0,
+            EGL_DMA_BUF_PLANE1_PITCH_EXT,  0, EGL_YUV_COLOR_SPACE_HINT_EXT, 0,
+            EGL_SAMPLE_RANGE_HINT_EXT, 0, EGL_NONE, };
+        attrs[1] = vs->width;
+        attrs[3] = vs->height;
+        attrs[5] = DRM_FORMAT_NV12;
+        attrs[7]  = vs->y_tex;
+        attrs[9]  = 0;
+        attrs[11] = vs->width;
+
+        attrs[13] = vs->y_tex;
+        attrs[15] = vs->width * vs->height;
+        attrs[17] = vs->width;
+        attrs[19] = EGL_ITU_REC601_EXT;
+        attrs[21] = EGL_YUV_NARROW_RANGE_EXT;
+
+        EGLImageKHR egl_image = eglCreateImageKHR(
+                    q->device->egl.display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attrs);
+        if (egl_image == EGL_NO_IMAGE_KHR)
+            printf("jeffy, failed egl image\n");
+
+        glClear (GL_COLOR_BUFFER_BIT);
+        CHECKEGL
+
+        glViewport(os->video_dst_rect.x0, os->video_dst_rect.y0,
+                os->video_dst_rect.x1-os->video_dst_rect.x0,
+                os->video_dst_rect.y1-os->video_dst_rect.y0);
+        shader = &vs->device->egl.oes;
+        glUseProgram (shader->program);
+        CHECKEGL
+
+
+  int tex_id = 0;
+  glGenTextures(1, &tex_id);
+    CHECKEGL
+            glActiveTexture(GL_TEXTURE0);
+            CHECKEGL
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, tex_id);
+
+    CHECKEGL
+  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    CHECKEGL
+  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    CHECKEGL
+  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    CHECKEGL
+  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    CHECKEGL
+
+    glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, egl_image);
+
+    CHECKEGL
+    glUniform1i (shader->texture[0], 0);
+     CHECKEGL
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    CHECKEGL
+    glUseProgram(0);
+    CHECKEGL
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+    CHECKEGL
+    eglSwapBuffers (q->device->egl.display, q->target->surface);
+    CHECKEGL
+
+    //eglDestroyImageKHR(q->device->egl.display, egl_image);
+
+#if 0
         /* Do the GLES display of the video */
         GLfloat vVertices[] =
         {
@@ -430,21 +516,24 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
         CHECKEGL
         glEnableVertexAttribArray (shader->texcoord_loc);
         CHECKEGL
+        glActiveTexture(GL_TEXTURE1);
+        CHECKEGL
+        glBindTexture (GL_TEXTURE_EXTERNAL_OES, os->vs->rgb_tex);
+        CHECKEGL
+      //  glUniform1i (shader->texture[0], 3);
+       // CHECKEGL
 
-        glActiveTexture(GL_TEXTURE3);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        //glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
         CHECKEGL
-        glBindTexture (GL_TEXTURE_2D, os->vs->rgb_tex);
-        CHECKEGL
-        glUniform1i (shader->texture[0], 3);
-        CHECKEGL
+        glBindTexture (GL_TEXTURE_EXTERNAL_OES, 0);
 
-        glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
+        //glUseProgram(0);
         CHECKEGL
-
-        glUseProgram(0);
-        CHECKEGL
+#endif
     }
 
+#if 0
     if (os->rgba.flags & RGBA_FLAG_NEEDS_CLEAR)
         rgba_clear(&os->rgba);
 
@@ -518,8 +607,9 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
         glDisable(GL_BLEND);
         CHECKEGL
     }
+#endif
 
-    eglSwapBuffers (q->device->egl.display, q->target->surface);
+    //eglSwapBuffers (q->device->egl.display, q->target->surface);
     eglMakeCurrent(q->device->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
     return VDP_STATUS_OK;

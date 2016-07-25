@@ -20,3 +20,7 @@ surface_output.c
 surface_video.c
 v4l2.c
 video_mixer.c
+demo/v4l2_slice_video_decode_accelerator.cc
+demo/generic_v4l2_device.cc
+demo/rendering_helper.cc
+Makefile

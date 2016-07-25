@@ -4,6 +4,7 @@ SRC = device.c presentation_queue.c surface_output.c surface_video.c \
       rgba.c gles.c h264_decoder.c \
       v4l2.c
 
+CROSS_COMPILER=arm-linux-gnueabihf-
 CFLAGS ?= -Wall -O3 -g -I ./include -I/usr/include/libdrm
 LDFLAGS ?=
 LIBS ?= -lrt -lm -lX11 -lrkdec-h264d -ldrm -lEGL -lGLESv2
