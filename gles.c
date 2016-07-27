@@ -8,10 +8,11 @@ const char *vertex_shader = "attribute vec4 vPosition;"
     "varying vec2 vTexcoord;"
     "void main(void) {"
     "   gl_Position = vPosition;"
-    "   vTexcoord = aTexcoord;"
+    "   vTexcoord = vec2(aTexcoord.x, 1.0 - aTexcoord.y);"
     "}";
 
-static const char* fragment_shaders[] = {
+
+static const char* fragment_shaders[] = {  
     /* YUVI420 RGB */
     "precision mediump float;"
     "varying vec2 vTexcoord;"
@@ -182,7 +183,6 @@ static const char* fragment_shaders[] = {
     "  vec4 color = texture2D(tex_external, vTexcoord);"
     "  gl_FragColor = color;"
     "}"
-
 };
 
 /* load and compile a shader src into a shader program */

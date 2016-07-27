@@ -31,6 +31,8 @@
 #include <GLES2/gl2ext.h>
 #include <libdrm/drm_fourcc.h>
 
+uint64_t time1;
+uint64_t time2;
 
 static uint64_t get_time(void)
 {
@@ -345,12 +347,17 @@ VdpStatus close_overlay(device_ctx_t *dev)
     return VDP_STATUS_OK;
 }
 
+
 VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue,
                                          VdpOutputSurface surface,
                                          uint32_t clip_width,
                                          uint32_t clip_height,
                                          VdpTime earliest_presentation_time)
 {
+    //time2 = time1;
+    //time1 = get_time();
+    //printf("time : %ul \n", time1 - time2);
+
 
     queue_ctx_t *q = handle_get(presentation_queue);
     if (!q)
@@ -387,31 +394,16 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
     }
     CHECKEGL
 
-        /*
     glBindFramebuffer (GL_FRAMEBUFFER, 0);
     CHECKEGL
-    */
-
-
-
+    
+#ifdef GL_OES
     if (os->vs && q->device->dsp_mode == NO_OVERLAY)
     {
         /* Do the GLES display of the video */
-        GLfloat vVertices[] =
-        {
-            -1.0f, -1.0f,
-            0.0f, 0.0f,
-
-            1.0f, -1.0f,
-            1.0f, 0.0f,
-
-            1.0f, 1.0f,
-            1.0f, 1.0f,
-
-            -1.0f, 1.0f,
-            0.0f, 1.0f,
-        };
-        GLushort indices[] = { 0, 1, 2, 0, 2, 3 };
+  static const float kVertices[] =
+      { -1.f, 1.f, -1.f, -1.f, 1.f, 1.f, 1.f, -1.f, };
+  static const float kTextureCoords[] = { 0, 1, 0, 0, 1, 1, 1, 0, };
 
         video_surface_ctx_t *vs = os->vs;
 
@@ -424,6 +416,7 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
             EGL_DMA_BUF_PLANE1_FD_EXT,     0, EGL_DMA_BUF_PLANE1_OFFSET_EXT, 0,
             EGL_DMA_BUF_PLANE1_PITCH_EXT,  0, EGL_YUV_COLOR_SPACE_HINT_EXT, 0,
             EGL_SAMPLE_RANGE_HINT_EXT, 0, EGL_NONE, };
+
         attrs[1] = vs->width;
         attrs[3] = vs->height;
         attrs[5] = DRM_FORMAT_NV12;
@@ -448,66 +441,53 @@ VdpStatus vdp_presentation_queue_display(VdpPresentationQueue presentation_queue
         glUseProgram (shader->program);
         CHECKEGL
 
-        glViewport(os->video_dst_rect.x0, os->video_dst_rect.y0,
+            glViewport(os->video_dst_rect.x0, os->video_dst_rect.y0,
                 os->video_dst_rect.x1-os->video_dst_rect.x0,
                 os->video_dst_rect.y1-os->video_dst_rect.y0);
 
-CHECKEGL
+            CHECKEGL
+
+            glVertexAttribPointer (shader->position_loc, 2, GL_FLOAT,
+                GL_FALSE, 0, kVertices);
+            CHECKEGL
+            glEnableVertexAttribArray (shader->position_loc);
+            CHECKEGL
+
+            glVertexAttribPointer (shader->texcoord_loc, 2, GL_FLOAT,
+                GL_FALSE, 0, kTextureCoords);
+            CHECKEGL
+            glEnableVertexAttribArray (shader->texcoord_loc);
+            CHECKEGL
+            glUniform1i (shader->texture[0], 0);
+            CHECKEGL
 
 
-                        glVertexAttribPointer (shader->position_loc, 2, GL_FLOAT,
-                            GL_FALSE, 4 * sizeof (GLfloat), vVertices);
-                        CHECKEGL
-                        glEnableVertexAttribArray (shader->position_loc);
-                        CHECKEGL
-
-                        glVertexAttribPointer (shader->texcoord_loc, 2, GL_FLOAT,
-                            GL_FALSE, 4 * sizeof (GLfloat), &vVertices[2]);
-                        CHECKEGL
-                        glEnableVertexAttribArray (shader->texcoord_loc);
-                        CHECKEGL
-
-                        glActiveTexture(GL_TEXTURE0);
-                        CHECKEGL
-
-
-  int tex_id = 0;
-  glGenTextures(1, &tex_id);
-    CHECKEGL
             glActiveTexture(GL_TEXTURE0);
             CHECKEGL
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, tex_id);
+            glBindTexture(GL_TEXTURE_EXTERNAL_OES, vs->oes_tex);
+            CHECKEGL
+            glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, egl_image);
+            CHECKEGL
 
-    CHECKEGL
-  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    CHECKEGL
-  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    CHECKEGL
-  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    CHECKEGL
-  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    CHECKEGL
+            glActiveTexture(GL_TEXTURE0);
+            CHECKEGL
+            glBindTexture(GL_TEXTURE_EXTERNAL_OES, vs->oes_tex);
+            CHECKEGL          
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            CHECKEGL
 
-    glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, egl_image);
+            glUseProgram(0);
+            CHECKEGL
+            glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+            CHECKEGL
 
-    CHECKEGL
-    glUniform1i (shader->texture[0], 0);
-     CHECKEGL
+            //eglDestroyImageKHR(q->device->egl.display, egl_image);
+        }
 
+#else
 
-    //glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    CHECKEGL
-    glUseProgram(0);
-    CHECKEGL
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
-    CHECKEGL
-    eglSwapBuffers (q->device->egl.display, q->target->surface);
-    CHECKEGL
-
-    //eglDestroyImageKHR(q->device->egl.display, egl_image);
-
-#if 0
+    if (os->vs && q->device->dsp_mode == NO_OVERLAY)
+    {
         /* Do the GLES display of the video */
         GLfloat vVertices[] =
         {
@@ -554,24 +534,23 @@ CHECKEGL
         CHECKEGL
         glEnableVertexAttribArray (shader->texcoord_loc);
         CHECKEGL
-        glActiveTexture(GL_TEXTURE1);
-        CHECKEGL
-        glBindTexture (GL_TEXTURE_EXTERNAL_OES, os->vs->rgb_tex);
-        CHECKEGL
-      //  glUniform1i (shader->texture[0], 3);
-       // CHECKEGL
 
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        //glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
+        glActiveTexture(GL_TEXTURE3);
         CHECKEGL
-        glBindTexture (GL_TEXTURE_EXTERNAL_OES, 0);
+        glBindTexture (GL_TEXTURE_2D, os->vs->rgb_tex);
+        CHECKEGL
+        glUniform1i (shader->texture[0], 3);
+        CHECKEGL
 
-        //glUseProgram(0);
+        glDrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
         CHECKEGL
-#endif
+
+        glUseProgram(0);
+        CHECKEGL
     }
 
-#if 0
+#endif
+
     if (os->rgba.flags & RGBA_FLAG_NEEDS_CLEAR)
         rgba_clear(&os->rgba);
 
@@ -645,10 +624,19 @@ CHECKEGL
         glDisable(GL_BLEND);
         CHECKEGL
     }
-#endif
 
-    //eglSwapBuffers (q->device->egl.display, q->target->surface);
+
+
+    eglSwapBuffers (q->device->egl.display, q->target->surface);
+
+    time2 = time1;
+    time1 = get_time();
+    printf("time : %llu \n", time1 - time2);
+
+
     eglMakeCurrent(q->device->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+
+
 
     return VDP_STATUS_OK;
 }

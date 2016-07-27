@@ -173,8 +173,11 @@ VdpStatus vdp_video_mixer_render(VdpVideoMixer mixer,
                 /* uv */
                 buffers[1] = buf + w * h;
 
+#ifdef GL_OES
                 video_surface_render_picture(os->vs, os->vs->dma_fd);
-
+#else
+                video_surface_render_picture(os->vs, buffers); 
+#endif
                 munmap(buf, size);
             }
 
